@@ -15,7 +15,8 @@ Instructions and setup for air-gapped PKI.
 
 Determine the host's IP address and run the playbook.
 
-> NOTE: The trailing `,` on `$HOST_IP` is important.
+> [!IMPORTANT]
+> The trailing `,` on `$HOST_IP` is important.
 
 ```
 ansible-playbook -u admin -i $HOST_IP, playbook.yaml
