@@ -25,6 +25,7 @@
           - yubikey-manager
           - cryptsetup
           - vim
+          - openssl
         state: latest
 
     - name: Install cfssl
