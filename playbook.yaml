@@ -27,17 +27,45 @@
           - vim
         state: latest
 
-    - name: Install CFSSL
+    - name: Install cfssl
       ansible.builtin.get_url:
         url: https://github.com/cloudflare/cfssl/releases/download/v{{ cfssl_version }}/{{ item }}_{{ cfssl_version }}_{{ ansible_facts.system | lower }}_{{ _install_arch.get(ansible_facts.architecture, ansible_facts.architecture) }}
         dest: /usr/bin/{{item}}
-        mode: '0755'
+        mode: 0755
         owner: root
         group: root
         checksum: "sha256:https://github.com/cloudflare/cfssl/releases/download/v{{ cfssl_version }}/cfssl_{{ cfssl_version }}_checksums.txt"
       loop:
         - cfssl
         - cfssljson
+
+    - name: Harden ssh configuration
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "^{{ item | split | first }}"
+        line: "{{ item }}"
+        state: present
+        validate: 'sshd -T -f %s'
+        mode: 0644
+      register: _result
+      loop:
+        - PermitRootLogin no
+        - PasswordAuthentication no
+        - PermitEmptyPasswords no
+        - AuthenticationMethods publickey
+        - DebianBanner no
+        - KerberosAuthentication no
+        - GSSAPIAuthentication no
+        - AllowAgentForwarding no
+        - AllowTcpForwarding no
+        - PermitTunnel no
+        - X11Forwarding no
+
+    - name: Restart sshd
+      ansible.builtin.service:
+        name: sshd
+        state: restarted
+      when: _result.changed
 
     - name: Disable wireless radios
       ansible.builtin.blockinfile:
@@ -67,8 +95,11 @@
         that: devices | length == 0
         msg: "rfkill reported {{ devices | length }} potential wireless devices"
 
+    # this task is retried because sometimes it takes a moment after rebooting for the clock to synchronize
     - name: Confirm the system clock is synchronized
       ansible.builtin.command: timedatectl show -P NTPSynchronized
       register: _result
       changed_when: false
-      failed_when: '_result.stdout != "yes"'
+      until: '_result.stdout == "yes"'
+      retries: 3
+      delay: 5
