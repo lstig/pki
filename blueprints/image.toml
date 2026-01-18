@@ -12,8 +12,12 @@ password = "root"
 shell = "/bin/bash"
 
 [[customizations.filesystem]]
+mountpoint = "/"
+size = "8 GiB"
+
+[[customizations.filesystem]]
 mountpoint = "/var"
-minsize = "2 GiB"
+size = "1 GiB"
 
 [[customizations.files]]
 path = "/etc/modprobe.d/blockwireless.conf"
