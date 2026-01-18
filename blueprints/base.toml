@@ -1,0 +1,20 @@
+name = "pki-base"
+description = "Packages and base configuration for PKI image"
+version = "0.0.1"
+
+packages = [
+    { name = "cryptsetup" },
+    { name = "dirmngr" },
+    { name = "gnupg2" },
+    { name = "jq" },
+    { name = "opensc" },
+    { name = "openssl" },
+    { name = "pcsc-lite" },
+    { name = "rfkill" },
+    { name = "vim" },
+    { name = "ykpers" },
+    { name = "yubikey-manager" },
+]
+
+[customizations]
+hostname = "pki"

@@ -1,0 +1,89 @@
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+
+version: '3'
+
+vars:
+  IMAGE_BUILDER: ghcr.io/osbuild/image-builder-cli
+  DISTRO: fedora-43
+  ARCH: aarch64
+  OSTREE_REF: fedora/stable/{{.ARCH}}/iot
+  OUTPUT_DIR: '{{joinPath .ROOT_DIR "output"}}'
+  BLUEPRINTS_DIR: '{{joinPath .ROOT_DIR "blueprints"}}'
+
+tasks:
+  build:repo:
+    desc: Generate the iot-commit ostree repository
+    cmds:
+      - >-
+        docker run -it --rm --privileged \
+          -v "{{.OUTPUT_DIR}}":/output \
+          -v "{{.BLUEPRINTS_DIR}}":/blueprints \
+          {{.IMAGE_BUILDER}} build iot-commit \
+            --arch {{.ARCH}} \
+            --distro {{.DISTRO}} \
+            --ostree-ref {{.OSTREE_REF}} \
+            --blueprint /blueprints/base.toml \
+            --output-dir /output
+    sources:
+      - blueprints/base.toml
+    generates:
+      - 'output/{{.DISTRO}}-iot-commit-{{.ARCH}}.tar'
+
+  build:image:
+    desc: Build the device image
+    deps:
+      - build:repo
+    vars:
+      REPO_DIR: '{{joinPath .OUTPUT_DIR "repo"}}'
+      NETWORK: builder
+    cmds:
+      - docker network create {{.NETWORK}}
+      - defer: docker network rm {{.NETWORK}}
+      - tar xf output/{{.DISTRO}}-iot-commit-{{.ARCH}}.tar -C "{{.OUTPUT_DIR}}" repo
+      - defer: rm -rf "{{.REPO_DIR}}"
+      - >-
+        docker run -d --rm \
+          -v "{{.REPO_DIR}}":/repo \
+          --workdir /repo \
+          --name repo \
+          --network {{.NETWORK}} \
+          cgr.dev/chainguard/python -m http.server 8000
+      - defer: docker container stop repo
+      - >-
+        docker run -it --rm --privileged \
+          -v "{{.OUTPUT_DIR}}":/output \
+          -v "{{.BLUEPRINTS_DIR}}":/blueprints \
+          --network {{.NETWORK}} \
+          {{.IMAGE_BUILDER}} build iot-raw-xz \
+            --arch {{.ARCH}} \
+            --distro {{.DISTRO}} \
+            --ostree-ref {{.OSTREE_REF}} \
+            --ostree-url http://repo:8000 \
+            --blueprint /blueprints/image.toml \
+            --output-dir /output
+    sources:
+      - blueprints/image.toml
+      - 'output/{{.DISTRO}}-iot-commit-{{.ARCH}}.tar'
+    generates:
+      - 'output/{{.DISTRO}}-iot-raw-xz-{{.ARCH}}.raw.xz'
+
+  write:*:
+    desc: Write the device image to a disk attached to this system
+    deps:
+      - build:image
+    vars:
+      IDENTIFIER: '{{index .MATCH 0}}'
+      DISK_SIZE:
+        sh: diskutil info {{.IDENTIFIER}} | sed -n -e 's/^[[:space:]]*Disk Size:[[:space:]]*//p' | cut -d ' ' -f1,2
+    prompt: WARNING! This command will overwrite the contents of {{.IDENTIFIER}} ({{.DISK_SIZE}}), would you like to continue?
+    cmds:
+      - diskutil eraseDisk "MS-DOS" DISK MBR {{.IDENTIFIER}}
+      - diskutil unmountDisk force {{.IDENTIFIER}}
+      - 'xzcat "output/{{.DISTRO}}-iot-raw-xz-{{.ARCH}}.raw.xz" | sudo dd status=progress bs=4m of=/dev/r{{.IDENTIFIER}}'
+      - diskutil unmountDisk {{.IDENTIFIER}}
+
+
+  clean:
+    desc: Remove built artifacts
+    cmds:
+      - 'rm -rf {{.OUTPUT_DIR}}'

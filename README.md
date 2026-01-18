@@ -4,28 +4,45 @@ Instructions and setup for air-gapped PKI.
 
 ## Pre-requisites
 
-- Clean installation of the latest Raspberry Pi OS installed on a Raspberry Pi
-  - Initial username: `admin`
-  - SSH access enabled
-- Ethernet connection (for initial bootstrap/setup)
+- [Task](https://taskfile.dev)
+- Docker
+- 16 GB SD Card/USB Drive (minimum)
+- Raspberry Pi 3B+ (or later)
 
 ## Setup
 
-### Prepare the host
+### Determine the correct disk
 
-Determine the host's IP address and run the playbook.
+Connect the SD Card or USB drive to your computer and determine the appropriate `/dev/$ID`.
+On MacOS the device can be located with `diskutil`.
 
-> [!IMPORTANT]
-> The trailing `,` on `$HOST_IP` is important.
-
-```
-ansible-playbook -u admin -i $HOST_IP, playbook.yaml
+```shell
+diskutil list physical
 ```
 
-### Disconnect the host from the network
+You should see a disk that matches the size of the device you inserted (in the following example `/dev/disk6`):
 
-Remove the Ethernet cable from the Raspberry Pi.
+```text
+/dev/disk0 (internal, physical):
+   #:                       TYPE NAME                    SIZE       IDENTIFIER
+   0:      GUID_partition_scheme                        *500.3 GB   disk0
+   ...
+
+/dev/disk6 (internal, physical):
+   #:                       TYPE NAME                    SIZE       IDENTIFIER
+   0:     FDisk_partition_scheme                        *31.7 GB    disk6
+   ...
+```
+
+### Write the image to the disk
 
 > [!CAUTION]
-> **FROM THIS POINT FORWARD** the host should remain disconnected from the network.
-> Connecting to a network could expose sensitive key material if the host or network are compromised.
+> **CAREFULLY** review the output of `diskutil list`. The following command could cause *irreparable* harm if they are applied to the wrong device.
+
+Build the image and write it to the disk.
+
+```shell
+# <identifier> should be replaced with your disk's identifier.
+# Using the example above: <identifier>=disk6
+task write:<identifier>
+```

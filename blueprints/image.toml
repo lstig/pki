@@ -1,0 +1,27 @@
+name = "pki-image"
+description = "Additional customizations applied to the final system image"
+version = "0.0.1"
+
+[customizations.kernel]
+# only log errors and above so we don't spam the console
+append = "loglevel=3"
+
+[[customizations.user]]
+name = "root"
+password = "root"
+shell = "/bin/bash"
+
+[[customizations.filesystem]]
+mountpoint = "/var"
+minsize = "2 GiB"
+
+[[customizations.files]]
+path = "/etc/modprobe.d/blockwireless.conf"
+mode = "0644"
+user = "root"
+group = "root"
+data = """
+blacklist bluetooth
+blacklist brcmfmac
+blacklist brcmfmac_wcc
+"""
