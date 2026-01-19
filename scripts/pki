@@ -160,14 +160,14 @@ initca () {
     jq -cn --arg CN "$1" '$ARGS.named'
     jq -cn --arg expiry "${expiry[-1]}" '{ca: $ARGS.named}'
     jq -cn --argjson key "$key" '$ARGS.named'
-    jq -cn                                \
-      --arg C "${country[-1]}"            \
-      --arg ST "${state[-1]}"             \
-      --arg L "${locality[-1]}"           \
-      --arg O "${organization[-1]}"       \
-      --arg OU "${organization_unit[-1]}" \
+    jq -cn                                  \
+      --arg C "${country[-1]:-}"            \
+      --arg ST "${state[-1]:-}"             \
+      --arg L "${locality[-1]:-}"           \
+      --arg O "${organization[-1]:-}"       \
+      --arg OU "${organization_unit[-1]:-}" \
       '{names: [$ARGS.named | map_values(select(. != ""))]}'
-  } | jq -s add | cfssl genkey -initca - | cfssljson -bare ca
+  } | jq -s add | tee /dev/stderr | cfssl genkey -initca - | cfssljson -bare ca
 }
 
 main "$@"
