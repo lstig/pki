@@ -37,7 +37,8 @@ You should see a disk that matches the size of the device you inserted (in the f
 ### Write the image to the disk
 
 > [!CAUTION]
-> **CAREFULLY** review the output of `diskutil list`. The following command could cause *irreparable* harm if they are applied to the wrong device.
+> **CAREFULLY** review the output of `diskutil list`. 
+> The following command could cause *irreparable* harm if it is run against the wrong disk.
 
 Build the image and write it to the disk.
 
