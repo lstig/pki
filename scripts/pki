@@ -1,0 +1,173 @@
+#!/usr/bin/env zsh
+
+set -euo pipefail
+
+zmodload zsh/zutil
+
+PROG=$(basename "$0")
+
+HELP=()
+GLOBAL_OPTS=$(
+  print -rC1 --                                       \
+    "  Global Options:"                               \
+    "    -h, --help    Display this message and exit" \
+    ""
+)
+
+main () {
+  usage () {
+    print -rC1 --                                                 \
+      "$PROG COMMAND"                                             \
+      ""                                                          \
+      "  Commands:"                                               \
+      "    genpass   Generate a secure passphrase"                \
+      "    initca    Setup an initial root certificate authority" \
+      ""                                                          \
+      "$GLOBAL_OPTS"
+  }
+
+  zparseopts -D -F -K -- {h,-help}=HELP
+
+  if (( $#HELP || $# == 0 )); then
+    usage
+    return
+  fi
+
+  cmd=$1
+  shift
+
+  case "$cmd" in
+    genpass)
+      genpass "$@"
+      ;;
+    initca)
+      initca "$@"
+      ;;
+    *)
+      echo "ERROR: Unknown command '$cmd'"
+      return 1
+      ;;
+  esac
+}
+
+genpass () {
+  CMD=$0
+  usage () {
+    print -rC1 --                                                                                  \
+      "$PROG $CMD [options]"                                                                       \
+      ""                                                                                           \
+      "Generate secure passphrases, e.g.: AAAA-BBBB-1234-5678-CCCC-DDDD"                           \
+      ""                                                                                           \
+      "  Options:"                                                                                 \
+      "    -g, --groups int        Number of groups in the passphrase (default \"${groups[-1]}\")" \
+      "    -s, --group-size int    Size of each group (default \"${group_size[-1]}\")"             \
+      "    -d, --delimiter char    Passphrase group delimiter (default \"${delim[-1]}\")"          \
+      "" \
+      "$GLOBAL_OPTS"
+  }
+
+  local delim=('-')
+  local groups=(7)
+  local group_size=(5)
+
+  zparseopts -D -F -K --        \
+    {h,-help}=HELP              \
+    {g,-groups}:=groups         \
+    {s,-group-size}:=group_size \
+    {d,-delimiter}:=delim
+
+  if (( $#HELP )); then
+    usage
+    return
+  fi
+
+  if (( $# != 0 )); then
+    print -rC1 -- "ERROR: command does not expect any arguments but received: $*"
+    usage
+    return 1
+  fi
+
+  LC_ALL=C tr -dc "A-Z2-9" < /dev/urandom |                               \
+      tr -d "IOUS5" |                                                     \
+      fold  -w  "${group_size[-1]}" |                                     \
+      paste -sd "${delim[-1]}" - |                                        \
+      head  -c  "$(( group_size[-1] * groups[-1] + (groups[-1] - 1) ))" | \
+      xargs -0  printf '%s\n'
+}
+
+initca () {
+  CMD=$0
+  usage () {
+    print -rC1 --                                                                                                           \
+      "$PROG $CMD [options] NAME"                                                                                           \
+      ""                                                                                                                    \
+      "  Options:"                                                                                                          \
+      "    -a,  --algo string                Cryptographic algorithm: rsa, ecdsa, or ed25519 (default \"${key_algo[-1]}\")" \
+      "    -s,  --size int                   RSA key size or ECDSA curve (default ${key_size[-1]})"                         \
+      "    -e,  --expiry string              The validity period of the certificate (default \"${expiry[-1]}\")"            \
+      "    -C,  --country string             Two-letter country code"                                                       \
+      "    -ST, --state string               State or province name"                                                        \
+      "    -L,  --locality string            Locality (city) name"                                                          \
+      "    -O,  --organization string        Organization name"                                                             \
+      "    -OU, --organization-unit string   Organization unit name"                                                        \
+      "" \
+      "$GLOBAL_OPTS"
+  }
+
+  local key_algo=('rsa')
+  local key_size=(4096)
+  local expiry=('87660h')
+  local country=()
+  local state=()
+  local locality=()
+  local organization=()
+  local organization_unit=()
+
+  zparseopts -D -F -K --            \
+    {h,-help}=HELP                  \
+    {a,-algo}:=key_algo             \
+    {s,-size}:=key_size             \
+    {e,-expiry}:=expiry             \
+    {C,-country}:=country           \
+    {ST,-state}:=state              \
+    {L,-locality}:=locality         \
+    {O,-organization}:=organization \
+    {OU,-organization-unit}:=organization_unit
+
+  if (( $#HELP )); then
+    usage
+    return
+  fi
+
+  if (( $# != 1 )); then
+    print -rC1 -- "ERROR: expected one argument, received $#"
+    usage
+    return 1
+  fi
+
+  local key
+  case "${key_algo[-1]}" in
+    ecdsa|rsa) key=$(jq -cn --arg algo "${key_algo[-1]}" --argjson size "${key_size[-1]}" '$ARGS.named') ;;
+    ed25519) key=$(jq -cn --arg algo "${key_algo[-1]}" '$ARGS.named') ;;
+    *)
+      print -rC1 -- "ERROR: unknown key type '${key_algo[-1]}'"
+      usage
+      return 1
+      ;;
+  esac
+
+  {
+    jq -cn --arg CN "$1" '$ARGS.named'
+    jq -cn --arg expiry "${expiry[-1]}" '{ca: $ARGS.named}'
+    jq -cn --argjson key "$key" '$ARGS.named'
+    jq -cn                                \
+      --arg C "${country[-1]}"            \
+      --arg ST "${state[-1]}"             \
+      --arg L "${locality[-1]}"           \
+      --arg O "${organization[-1]}"       \
+      --arg OU "${organization_unit[-1]}" \
+      '{names: [$ARGS.named | map_values(select(. != ""))]}'
+  } | jq -s add | cfssl genkey -initca - | cfssljson -bare ca
+}
+
+main "$@"
