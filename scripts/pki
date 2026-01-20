@@ -14,9 +14,13 @@ GLOBAL_OPTS=$(
     ""
 )
 
+log () {
+  print -rC1 -- "$@" >&2
+}
+
 main () {
   usage () {
-    print -rC1 --                                                 \
+    log                                                           \
       "$PROG COMMAND"                                             \
       ""                                                          \
       "  Commands:"                                               \
@@ -53,7 +57,7 @@ main () {
 genpass () {
   CMD=$0
   usage () {
-    print -rC1 --                                                                                  \
+    log                                                                                            \
       "$PROG $CMD [options]"                                                                       \
       ""                                                                                           \
       "Generate secure passphrases, e.g.: AAAA-BBBB-1234-5678-CCCC-DDDD"                           \
@@ -82,7 +86,7 @@ genpass () {
   fi
 
   if (( $# != 0 )); then
-    print -rC1 -- "ERROR: command does not expect any arguments but received: $*"
+    log "ERROR: command does not expect any arguments but received: $*"
     usage
     return 1
   fi
@@ -98,7 +102,7 @@ genpass () {
 initca () {
   CMD=$0
   usage () {
-    print -rC1 --                                                                                                           \
+    log                                                                                                                     \
       "$PROG $CMD [options] NAME"                                                                                           \
       ""                                                                                                                    \
       "  Options:"                                                                                                          \
@@ -146,7 +150,7 @@ initca () {
   fi
 
   if (( $# != 1 )); then
-    print -rC1 -- "ERROR: expected one argument, received $#"
+    log "ERROR: expected one argument, received $#"
     usage
     return 1
   fi
@@ -156,7 +160,7 @@ initca () {
     ecdsa|rsa) key=$(jq -cn --arg algo "${key_algo[-1]}" --argjson size "${key_size[-1]}" '$ARGS.named') ;;
     ed25519) key=$(jq -cn --arg algo "${key_algo[-1]}" '$ARGS.named') ;;
     *)
-      print -rC1 -- "ERROR: unknown key type '${key_algo[-1]}'"
+      log "ERROR: unknown key type '${key_algo[-1]}'"
       usage
       return 1
       ;;
@@ -168,7 +172,7 @@ initca () {
 
   if [[ -f "${filename[-1]}.-key.pem" || -f "${filename[-1]}.csr" || -f "${filename[-1]}.pem" ]]; then
     if (( ! $#force )); then
-      print -rC1 -- "Existing file(s) found: ${filename[-1]}{-key.pem,.csr,.pem}"
+      log "Existing file(s) found: ${filename[-1]}{-key.pem,.csr,.pem}"
       return 1
     fi
   fi
@@ -186,7 +190,7 @@ initca () {
       '{names: [$ARGS.named | map_values(select(. != ""))]}'
   } | jq -s add | tee /dev/stderr | cfssl genkey -initca - | cfssljson -bare "${filename[-1]}"
 
-  print -rC1 --                     \
+  log                               \
     "Wrote ${filename[-1]}-key.pem" \
     "Wrote ${filename[-1]}.csr"     \
     "Wrote ${filename[-1]}.pem"
