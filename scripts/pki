@@ -102,6 +102,8 @@ initca () {
       "$PROG $CMD [options] NAME"                                                                                           \
       ""                                                                                                                    \
       "  Options:"                                                                                                          \
+      "    -f,  --filename string            Override name of PEM, CSR, and Key"                                            \
+      "    --force                           Overwrite existing files"                                                      \
       "    -a,  --algo string                Cryptographic algorithm: rsa, ecdsa, or ed25519 (default \"${key_algo[-1]}\")" \
       "    -s,  --size int                   RSA key size or ECDSA curve (default ${key_size[-1]})"                         \
       "    -e,  --expiry string              The validity period of the certificate (default \"${expiry[-1]}\")"            \
@@ -114,6 +116,8 @@ initca () {
       "$GLOBAL_OPTS"
   }
 
+  local filename=()
+  local force=()
   local key_algo=('rsa')
   local key_size=(4096)
   local expiry=('87660h')
@@ -125,6 +129,8 @@ initca () {
 
   zparseopts -D -F -K --            \
     {h,-help}=HELP                  \
+    {f,-filename}:=filename         \
+    -force=force                    \
     {a,-algo}:=key_algo             \
     {s,-size}:=key_size             \
     {e,-expiry}:=expiry             \
@@ -156,6 +162,17 @@ initca () {
       ;;
   esac
 
+  if (( ! $#filename )); then
+    filename=("$(echo "$1" | tr ' ' '_' | tr '[:upper:]' '[:lower:]' | tr -cd '[:alnum:]_-')")
+  fi
+
+  if [[ -f "${filename[-1]}.-key.pem" || -f "${filename[-1]}.csr" || -f "${filename[-1]}.pem" ]]; then
+    if (( ! $#force )); then
+      print -rC1 -- "Existing file(s) found: ${filename[-1]}{-key.pem,.csr,.pem}"
+      return 1
+    fi
+  fi
+
   {
     jq -cn --arg CN "$1" '$ARGS.named'
     jq -cn --arg expiry "${expiry[-1]}" '{ca: $ARGS.named}'
@@ -167,7 +184,12 @@ initca () {
       --arg O "${organization[-1]:-}"       \
       --arg OU "${organization_unit[-1]:-}" \
       '{names: [$ARGS.named | map_values(select(. != ""))]}'
-  } | jq -s add | tee /dev/stderr | cfssl genkey -initca - | cfssljson -bare ca
+  } | jq -s add | tee /dev/stderr | cfssl genkey -initca - | cfssljson -bare "${filename[-1]}"
+
+  print -rC1 --                     \
+    "Wrote ${filename[-1]}-key.pem" \
+    "Wrote ${filename[-1]}.csr"     \
+    "Wrote ${filename[-1]}.pem"
 }
 
 main "$@"
