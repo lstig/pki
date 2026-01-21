@@ -2,6 +2,9 @@
 
 Instructions and setup for air-gapped PKI.
 
+> [!NOTE]
+> These instructions were written and tested on macOS.
+
 ## Pre-requisites
 
 - [Task](https://taskfile.dev)
@@ -14,7 +17,6 @@ Instructions and setup for air-gapped PKI.
 ### Determine the correct disk
 
 Connect the SD Card or USB drive to your computer and determine the appropriate `/dev/$ID`.
-On MacOS the device can be located with `diskutil`.
 
 ```shell
 diskutil list physical
