@@ -27,8 +27,8 @@ type initCAOptions struct {
 
 func newInitCACommand() *cli.Command {
 	var (
-		filename = &cli.StringFlag{Name: "file", Aliases: []string{"f"}, Usage: "Override name of PEM, CSR, and Key"}
-		//force            = &cli.BoolFlag{Name: "force", Usage: "Overwrite existing files"}
+		filename  = &cli.StringFlag{Name: "file", Aliases: []string{"f"}, Usage: "Override name prefix of the PEM, CSR, and Key"}
+		force     = &cli.BoolFlag{Name: "force", Usage: "Overwrite existing files", HideDefault: true}
 		algorithm = &cli.StringFlag{
 			Name:    "algorithm",
 			Aliases: []string{"a"},
@@ -59,6 +59,7 @@ func newInitCACommand() *cli.Command {
 		},
 		Flags: []cli.Flag{
 			filename,
+			force,
 			algorithm,
 			size,
 			expiry,
@@ -67,6 +68,12 @@ func newInitCACommand() *cli.Command {
 			locality,
 			organization,
 			organizationUnit,
+		},
+		Before: func(ctx context.Context, command *cli.Command) (context.Context, error) {
+			if command.Args().Len() != 1 {
+				return ctx, fmt.Errorf("expected exactly one argument but found %d", command.Args().Len())
+			}
+			return ctx, nil
 		},
 		Action: func(ctx context.Context, command *cli.Command) error {
 			req := csr.CertificateRequest{
@@ -109,11 +116,11 @@ func newInitCACommand() *cli.Command {
 			}
 
 			for ext, data := range out {
-				perm := os.FileMode(0644)
+				mode := os.FileMode(0644)
 				if ext == "-key.pem" {
-					perm = 0600
+					mode = 0600
 				}
-				if err := os.WriteFile(filename.Value+ext, data, perm); err != nil {
+				if err := writeFile(filename.Value+ext, mode, force.IsSet(), data); err != nil {
 					return err
 				}
 			}
@@ -123,4 +130,23 @@ func newInitCACommand() *cli.Command {
 	}
 
 	return cmd
+}
+
+func writeFile(file string, mode os.FileMode, overwrite bool, data []byte) error {
+	flags := os.O_WRONLY | os.O_CREATE | os.O_EXCL
+	if overwrite {
+		flags = os.O_WRONLY | os.O_CREATE | os.O_TRUNC
+	}
+
+	f, err := os.OpenFile(file, flags, mode)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	if _, err := f.Write(data); err != nil {
+		return err
+	}
+
+	return nil
 }
