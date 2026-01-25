@@ -17,7 +17,6 @@ packages = [
     { name = "vim" },
     { name = "ykpers" },
     { name = "yubikey-manager" },
-    { name = "zsh" },
 ]
 
 [customizations]

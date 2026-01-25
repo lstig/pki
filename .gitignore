@@ -3,3 +3,5 @@ output/
 .idea/
 *.pem
 *.csr
+# Added by goreleaser init:
+dist/
