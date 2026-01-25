@@ -12,19 +12,6 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-type initCAOptions struct {
-	filename         string
-	force            bool
-	algo             string
-	size             int
-	expiry           time.Duration
-	country          string
-	state            string
-	locality         string
-	organization     string
-	organizationUnit string
-}
-
 func newInitCACommand() *cli.Command {
 	var (
 		filename  = &cli.StringFlag{Name: "file", Aliases: []string{"f"}, Usage: "Override name prefix of the PEM, CSR, and Key"}
