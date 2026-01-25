@@ -22,6 +22,10 @@ builds:
     goos:
       - linux
       - darwin
+    ignore:
+      - goos: darwin
+        goarch: amd64
+      - goarch: "386"
     flags:
       - -trimpath
     ldflags:
@@ -34,9 +38,19 @@ archives:
       {{ .ProjectName }}_
       {{- title .Os }}_
       {{- if eq .Arch "amd64" }}x86_64
-      {{- else if eq .Arch "386" }}i386
       {{- else }}{{ .Arch }}{{ end }}
       {{- if .Arm }}v{{ .Arm }}{{ end }}
+
+nfpms:
+  - package_name: pki
+    homepage: https://github.com/lstig/pki
+    description: Air-gapped PKI helper utility
+    maintainer: lstig <https://github.com/lstig>
+    formats:
+      - rpm
+    bindir: /usr/bin
+    release: 1
+    mtime: "{{ .CommitDate }}"
 
 changelog:
   sort: asc
