@@ -122,19 +122,5 @@ func newInitCACommand() *cli.Command {
 		},
 	}
 
-	//"$PROG $CMD [options] NAME"                                                                                           \
-	//""                                                                                                                    \
-	//"  Options:"                                                                                                          \
-	//"    -f,  --filename string            Override name of PEM, CSR, and Key"                                            \
-	//"    --force                           Overwrite existing files"                                                      \
-	//"    -a,  --algorithm string                Cryptographic algorithm: rsa, ecdsa, or ed25519 (default \"${key_algo[-1]}\")" \
-	//"    -s,  --size int                   RSA key size or ECDSA curve (default ${key_size[-1]})"                         \
-	//"    -e,  --expiry string              The validity period of the certificate (default \"${expiry[-1]}\")"            \
-	//"    -C,  --country string             Two-letter country code"                                                       \
-	//"    -ST, --state string               State or province name"                                                        \
-	//"    -L,  --locality string            Locality (city) name"                                                          \
-	//"    -O,  --organization string        Organization name"                                                             \
-	//"    -OU, --organization-unit string   Organization unit name"                                                        \
-
 	return cmd
 }
