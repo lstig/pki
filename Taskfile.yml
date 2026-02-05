@@ -13,8 +13,8 @@ vars:
   PKG_REPO_DIR: '{{joinPath .REPO_DIR "ExtraPackages"}}'
 
 tasks:
-  build:packages:
-    desc: Generate the packages and rpm repository
+  build:package:
+    desc: Generate the PKI package and an RPM repository
     cmds:
       - goreleaser release --clean --snapshot
       - mkdir -p "{{.PKG_REPO_DIR}}"
@@ -32,7 +32,7 @@ tasks:
   build:iot-commit:
     desc: Generate the iot-commit ostree repository
     deps:
-      - build:packages
+      - build:package
     cmds:
       - >-
         docker run -it --rm --privileged \
