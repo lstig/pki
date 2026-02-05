@@ -16,7 +16,7 @@ tasks:
   build:packages:
     desc: Generate the packages and rpm repository
     cmds:
-      - goreleaser release --clean --auto-snapshot
+      - goreleaser release --clean --snapshot
       - mkdir -p "{{.PKG_REPO_DIR}}"
       - cp dist/*.rpm "{{.PKG_REPO_DIR}}"
       - >-
