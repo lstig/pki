@@ -6,7 +6,6 @@ packages = [
     { name = "cryptsetup" },
     { name = "dirmngr" },
     { name = "gnupg2" },
-    { name = "golang-github-cloudflare-cfssl" },
     { name = "jq" },
     { name = "opensc" },
     { name = "openssl" },
@@ -17,6 +16,8 @@ packages = [
     { name = "vim" },
     { name = "ykpers" },
     { name = "yubikey-manager" },
+    # custom package with 'pki' command
+    { name = "pki" },
 ]
 
 [customizations]

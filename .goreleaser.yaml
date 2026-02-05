@@ -10,9 +10,8 @@ version: 2
 
 before:
   hooks:
-    # You may remove this if you don't use go modules.
     - go mod tidy
-    # you may remove this if you don't need go generate
+    - gofmt -w -s .
     - go generate ./...
 
 builds:
@@ -26,10 +25,11 @@ builds:
       - goos: darwin
         goarch: amd64
       - goarch: "386"
+    mod_timestamp: "{{ .CommitTimestamp }}"
     flags:
       - -trimpath
     ldflags:
-      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{ .CommitDate }} -X main.builtBy=goreleaser -X main.treeState={{ .IsGitDirty }}
+      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{ .CommitDate }} -X main.builtBy=goreleaser -X main.treeState={{ .GitTreeState }}
 
 archives:
   - formats: [tar.gz]

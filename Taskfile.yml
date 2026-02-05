@@ -9,41 +9,65 @@ vars:
   OSTREE_REF: fedora/stable/{{.ARCH}}/iot
   OUTPUT_DIR: '{{joinPath .ROOT_DIR "output"}}'
   BLUEPRINTS_DIR: '{{joinPath .ROOT_DIR "blueprints"}}'
+  REPO_DIR: '{{joinPath .OUTPUT_DIR "repos"}}'
+  PKG_REPO_DIR: '{{joinPath .REPO_DIR "ExtraPackages"}}'
 
 tasks:
-  build:repo:
+  build:packages:
+    desc: Generate the packages and rpm repository
+    cmds:
+      - goreleaser release --clean --auto-snapshot
+      - mkdir -p "{{.PKG_REPO_DIR}}"
+      - cp dist/*.rpm "{{.PKG_REPO_DIR}}"
+      - >-
+        docker run -it --rm \
+          -v "{{.PKG_REPO_DIR}}":/repo \
+          quay.io/distributedci/dci-packaging-createrepo createrepo /repo
+    sources:
+      - .goreleaser.yaml
+      - cmd/**/*.go
+    generates:
+      - '{{.PKG_REPO_DIR}}/repodata/repomd.xml'
+
+  build:iot-commit:
     desc: Generate the iot-commit ostree repository
+    deps:
+      - build:packages
     cmds:
       - >-
         docker run -it --rm --privileged \
           -v "{{.OUTPUT_DIR}}":/output \
           -v "{{.BLUEPRINTS_DIR}}":/blueprints \
+          -v "{{.PKG_REPO_DIR}}:/repo" \
           {{.IMAGE_BUILDER}} build iot-commit \
             --arch {{.ARCH}} \
             --distro {{.DISTRO}} \
+            --extra-repo file:///repo \
             --ostree-ref {{.OSTREE_REF}} \
             --blueprint /blueprints/base.toml \
             --output-dir /output
     sources:
       - blueprints/base.toml
+      - '{{.PKG_REPO_DIR}}/repodata/repomd.xml'
     generates:
       - 'output/{{.DISTRO}}-iot-commit-{{.ARCH}}.tar'
 
   build:image:
     desc: Build the device image
     deps:
-      - build:repo
+      - build:iot-commit
     vars:
-      REPO_DIR: '{{joinPath .OUTPUT_DIR "repo"}}'
+      IOT_REPO_DIR: '{{joinPath .REPO_DIR "iot"}}'
       NETWORK: builder
     cmds:
       - docker network create {{.NETWORK}}
       - defer: docker network rm {{.NETWORK}}
-      - tar xf output/{{.DISTRO}}-iot-commit-{{.ARCH}}.tar -C "{{.OUTPUT_DIR}}" repo
-      - defer: rm -rf "{{.REPO_DIR}}"
+      - mkdir -p "{{.IOT_REPO_DIR}}"
+      - tar xf output/{{.DISTRO}}-iot-commit-{{.ARCH}}.tar -C "{{.IOT_REPO_DIR}}" --strip-components=2 repo
+      - defer: rm -rf "{{.IOT_REPO_DIR}}"
       - >-
         docker run -d --rm \
-          -v "{{.REPO_DIR}}":/repo \
+          -v "{{.IOT_REPO_DIR}}":/repo \
           --workdir /repo \
           --name repo \
           --network {{.NETWORK}} \
@@ -82,8 +106,8 @@ tasks:
       - 'xzcat "output/{{.DISTRO}}-iot-raw-xz-{{.ARCH}}.raw.xz" | sudo dd status=progress bs=4m of=/dev/r{{.IDENTIFIER}}'
       - diskutil unmountDisk {{.IDENTIFIER}}
 
-
   clean:
     desc: Remove built artifacts
     cmds:
+      -
       - 'rm -rf {{.OUTPUT_DIR}}'
