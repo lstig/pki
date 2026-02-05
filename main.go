@@ -9,7 +9,7 @@ import (
 
 	goversion "github.com/caarlos0/go-version"
 
-	"github.com/stignet/pki/internal/cli"
+	"github.com/lstig/pki/internal/cli"
 )
 
 var (
