@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"iter"
 	"log"
+	"maps"
 	"os"
+	"slices"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -16,187 +19,186 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
+const (
+	ECDSA             = "ecdsa"
+	RSA               = "rsa"
+	Ed25519           = "ed25519"
+	DefaultKeyRequest = ECDSA
+)
+
 func newInitCACommand() *cli.Command {
+	var (
+		keys = map[string]*csr.KeyRequest{
+			ECDSA:   {A: ECDSA, S: 384},
+			RSA:     {A: RSA, S: 4096},
+			Ed25519: {A: Ed25519},
+		}
+		req = &csr.CertificateRequest{
+			KeyRequest: keys[DefaultKeyRequest],
+			Names:      []csr.Name{{}},
+			CA:         &csr.CAConfig{Expiry: (87660 * time.Hour).String()},
+		}
+	)
+
+	var (
+		caName     = &cli.StringFlag{Name: "common-name", Usage: "Certificate authority common name", Destination: &req.CN}
+		caCountry  = &cli.StringFlag{Name: "country", Usage: "Two-letter country code", Destination: &req.Names[0].C}
+		caState    = &cli.StringFlag{Name: "state", Usage: "State or province name", Destination: &req.Names[0].ST}
+		caLocality = &cli.StringFlag{Name: "locality", Usage: "Locality (city) name", Destination: &req.Names[0].L}
+		caOrg      = &cli.StringFlag{Name: "organization", Usage: "Organization name", Destination: &req.Names[0].O}
+		caOrgUnit  = &cli.StringFlag{Name: "organization-unit", Usage: "Organization unit name", Destination: &req.Names[0].OU}
+
+		algorithm = &cli.StringFlag{
+			Name:  "algorithm",
+			Usage: fmt.Sprintf("Cryptographic algorithm (choices: %s)", strings.Join(slices.Sorted(maps.Keys(keys)), ", ")),
+			Value: req.KeyRequest.A,
+			Action: func(_ context.Context, _ *cli.Command, s string) error {
+				key, ok := keys[s]
+				if !ok {
+					return fmt.Errorf("unsupported algorithm '%s'", s)
+				}
+				req.KeyRequest = key
+				return nil
+			},
+		}
+		ecdsaCurve = &cli.IntFlag{Name: "ecdsa-curve", Usage: "ECDSA curve", Destination: &keys[ECDSA].S, Value: keys[ECDSA].S}
+		rsaKeySize = &cli.IntFlag{Name: "rsa-key-size", Usage: "RSA key size", Destination: &keys[RSA].S, Value: keys[RSA].S}
+		expiration = &cli.StringFlag{Name: "expiration", Usage: "Certificate expiration time", Destination: &req.CA.Expiry, Value: req.CA.Expiry, Validator: func(s string) error {
+			_, err := time.ParseDuration(s)
+			return err
+		}}
+
+		forceFlag = &cli.BoolFlag{Name: "force", Usage: "Overwrite existing files", HideDefault: true}
+		yesFlag   = &cli.BoolFlag{Name: "yes", Usage: "Automatically confirm request details", HideDefault: true}
+	)
+
 	cmd := &cli.Command{
 		Name:  "initca",
 		Usage: "Generate certificate authority root certificate",
-	}
-
-	var (
-		forceFlag = &cli.BoolFlag{Name: "force", Usage: "Overwrite existing files", HideDefault: true}
-		yesFlag   = &cli.BoolFlag{Name: "yes", Usage: "Automatically confirm request details", HideDefault: true}
-		fileFlag  = &cli.StringFlag{Name: "file", Aliases: []string{"f"}, Usage: "Override name prefix of the PEM, CSR, and Key"}
-	)
-
-	var (
-		req       = csr.New()
-		confirmed = true
-		groups    []*huh.Group
-	)
-	groups = append(groups, configureSubject(cmd, req)...)
-	groups = append(groups, configureCA(cmd, req)...)
-	groups = append(groups, huh.NewGroup(
-		huh.NewConfirm().
-			Title("Does the request look correct?").
-			DescriptionFunc(fmtRequstDetails(req), req).
-			Value(&confirmed).
-			WithHeight(7),
-	).WithHideFunc(func() bool { return yesFlag.IsSet() }))
-
-	cmd.Flags = append(cmd.Flags, yesFlag, forceFlag, fileFlag)
-	cmd.Action = func(ctx context.Context, _ *cli.Command) error {
-		if err := huh.NewForm(groups...).RunWithContext(ctx); err != nil {
-			return err
-		}
-
-		if !confirmed {
-			return errors.New("command aborted")
-		}
-
-		var (
-			err error
-			out = map[string][]byte{}
-		)
-		out[".pem"], out[".csr"], out["-key.pem"], err = initca.New(req)
-		if err != nil {
-			return err
-		}
-
-		if fileFlag.Value == "" {
-			r := strings.NewReplacer(" ", "_", "-", "_", ".", "_")
-			fileFlag.Value = r.Replace(strings.ToLower(req.CN))
-		}
-
-		for ext, data := range out {
-			mode := os.FileMode(0644)
-			if ext == "-key.pem" {
-				mode = 0600
-			}
-			if err := writeFile(fileFlag.Value+ext, mode, forceFlag.IsSet(), data); err != nil {
+		Flags: []cli.Flag{
+			caName,
+			caCountry,
+			caState,
+			caLocality,
+			caOrg,
+			caOrgUnit,
+			algorithm,
+			ecdsaCurve,
+			rsaKeySize,
+			expiration,
+			forceFlag,
+			yesFlag,
+		},
+		Action: func(ctx context.Context, _ *cli.Command) error {
+			confirmed := yesFlag.IsSet()
+			form := huh.NewForm(
+				huh.NewGroup(
+					huh.NewInput().
+						Title("Enter a name for the certificate authority").
+						Value(&req.CN).
+						Validate(func(s string) error {
+							if len(s) == 0 {
+								return errors.New("please provide a name")
+							}
+							return nil
+						}),
+				).WithHide(caName.IsSet()),
+				huh.NewGroup(
+					huh.NewNote().
+						Title("Subject Details").
+						Description("_The following fields are optional_"),
+					huh.NewInput().
+						Title("Enter two-letter country code").
+						Value(&req.Names[0].C),
+					huh.NewInput().
+						Title("Enter state or province name").
+						Value(&req.Names[0].ST),
+					huh.NewInput().
+						Title("Enter locality (city) name").
+						Value(&req.Names[0].L),
+					huh.NewInput().
+						Title("Enter organization name").
+						Value(&req.Names[0].O),
+					huh.NewInput().
+						Title("Enter organization unit name").
+						Value(&req.Names[0].OU),
+				).WithHide(caCountry.IsSet() || caState.IsSet() || caLocality.IsSet() || caOrg.IsSet() || caOrgUnit.IsSet()),
+				huh.NewGroup(
+					huh.NewSelect[*csr.KeyRequest]().
+						Title("Choose an algorithm").
+						Options(slices.Collect(mapOptions(keys))...).
+						Value(&req.KeyRequest),
+				).WithHide(algorithm.IsSet()),
+				huh.NewGroup(
+					huh.NewSelect[int]().
+						Title("Choose an RSA key size").
+						Options(huh.NewOptions[int](2048, 4096, 6144, 8192)...).
+						Value(&keys[RSA].S),
+				).WithHideFunc(func() bool { return rsaKeySize.IsSet() || req.KeyRequest.A != RSA }),
+				huh.NewGroup(
+					huh.NewSelect[int]().
+						Title("Choose an ECDSA curve").
+						Options(huh.NewOptions[int](256, 384, 521)...).
+						Value(&keys[ECDSA].S),
+				).WithHideFunc(func() bool { return ecdsaCurve.IsSet() || req.KeyRequest.A != ECDSA }),
+				huh.NewGroup(
+					huh.NewInput().
+						Title("Enter an expiration time").
+						Validate(func(s string) error {
+							_, err := time.ParseDuration(s)
+							return err
+						}).
+						Value(&req.CA.Expiry),
+				).WithHide(expiration.IsSet()),
+				huh.NewGroup(
+					huh.NewConfirm().
+						Title("Does the request look correct?").
+						DescriptionFunc(fmtRequstDetails(req), req).
+						Value(&confirmed).
+						WithHeight(7),
+				).WithHide(yesFlag.IsSet()),
+			)
+			if err := form.RunWithContext(ctx); err != nil {
 				return err
 			}
-		}
 
-		return nil
+			if !confirmed {
+				return errors.New("user canceled")
+			}
+
+			var (
+				err  error
+				out  = map[string][]byte{}
+				file = strings.NewReplacer(" ", "_", "-", "_", ".", "_").Replace(strings.ToLower(req.CN))
+			)
+			out[".pem"], out[".csr"], out["-key.pem"], err = initca.New(req)
+			if err != nil {
+				return err
+			}
+			for ext, data := range out {
+				mode := os.FileMode(0644)
+				if ext == "-key.pem" {
+					mode = 0600
+				}
+				if err := writeFile(file+ext, mode, forceFlag.IsSet(), data); err != nil {
+					return err
+				}
+			}
+
+			return nil
+		},
 	}
 
 	return cmd
 }
 
-func configureSubject(cmd *cli.Command, req *csr.CertificateRequest) []*huh.Group {
-	req.Names = []csr.Name{{}}
-	var (
-		nameFlag     = &cli.StringFlag{Name: "common-name", Usage: "Certificate authority common name", Destination: &req.CN}
-		countryFlag  = &cli.StringFlag{Name: "country", Usage: "Two-letter country code", Destination: &req.Names[0].C}
-		stateFlag    = &cli.StringFlag{Name: "state", Usage: "State or province name", Destination: &req.Names[0].ST}
-		localityFlag = &cli.StringFlag{Name: "locality", Usage: "Locality (city) name", Destination: &req.Names[0].L}
-		orgFlag      = &cli.StringFlag{Name: "organization", Usage: "Organization name", Destination: &req.Names[0].O}
-		orgUnitFlag  = &cli.StringFlag{Name: "organization-unit", Usage: "Organization unit name", Destination: &req.Names[0].OU}
-	)
-	cmd.Flags = append(cmd.Flags, nameFlag, countryFlag, stateFlag, localityFlag, orgFlag, orgUnitFlag)
-	return []*huh.Group{
-		huh.NewGroup(
-			huh.NewInput().
-				Title("Enter a name for the certificate authority").
-				Value(&req.CN).
-				Validate(func(s string) error {
-					if len(s) == 0 {
-						return errors.New("please provide a name")
-					}
-					return nil
-				}),
-		).WithHideFunc(func() bool { return nameFlag.IsSet() }),
-		huh.NewGroup(
-			huh.NewNote().
-				Title("Subject Details").
-				Description("_The following fields are optional_"),
-			huh.NewInput().
-				Title("Enter two-letter country code").
-				Value(&req.Names[0].C),
-			huh.NewInput().
-				Title("Enter state or province name").
-				Value(&req.Names[0].ST),
-			huh.NewInput().
-				Title("Enter locality (city) name").
-				Value(&req.Names[0].L),
-			huh.NewInput().
-				Title("Enter organization name").
-				Value(&req.Names[0].O),
-			huh.NewInput().
-				Title("Enter organization unit name").
-				Value(&req.Names[0].OU),
-		).WithHideFunc(func() bool {
-			return countryFlag.IsSet() || stateFlag.IsSet() || localityFlag.IsSet() || orgFlag.IsSet() || orgUnitFlag.IsSet()
-		}),
-	}
-}
-
-func configureCA(cmd *cli.Command, req *csr.CertificateRequest) []*huh.Group {
-	var (
-		ecdsa   = &csr.KeyRequest{A: "ecdsa", S: 384}
-		rsa     = &csr.KeyRequest{A: "rsa", S: 4096}
-		ed25519 = &csr.KeyRequest{A: "ed25519"}
-	)
-	req.KeyRequest = ecdsa
-	req.CA = &csr.CAConfig{Expiry: (87660 * time.Hour).String()}
-	var (
-		algorithmFlag = &cli.StringFlag{
-			Name:  "algorithm",
-			Usage: fmt.Sprintf("Cryptographic algorithm: %s, %s, or %s", ecdsa.A, ed25519.A, rsa.A),
-			Value: req.KeyRequest.A,
-			Action: func(ctx context.Context, command *cli.Command, s string) error {
-				switch s {
-				case ecdsa.A:
-					req.KeyRequest = ecdsa
-				case rsa.A:
-					req.KeyRequest = rsa
-				case ed25519.A:
-					req.KeyRequest = ed25519
-				default:
-					return fmt.Errorf("unsupported algorithm '%s'", s)
-				}
-				return nil
-			},
+func mapOptions[Map ~map[string]T, T comparable](m Map) iter.Seq[huh.Option[T]] {
+	return func(yield func(huh.Option[T]) bool) {
+		for _, k := range slices.Sorted(maps.Keys(m)) {
+			if !yield(huh.NewOption(k, m[k])) {
+				return
+			}
 		}
-		ecdsaCurveFlag = &cli.IntFlag{Name: "ecdsa-curve", Usage: "ECDSA curve", Destination: &ecdsa.S, Value: ecdsa.S}
-		rsaKeySizeFlag = &cli.IntFlag{Name: "rsa-key-size", Usage: "RSA key size", Destination: &rsa.S, Value: rsa.S}
-		expirationFlag = &cli.StringFlag{Name: "expiration", Usage: "Certificate expiration time (in hours)", Destination: &req.CA.Expiry, Value: req.CA.Expiry, Validator: func(s string) error {
-			_, err := time.ParseDuration(s)
-			return err
-		}}
-	)
-	cmd.Flags = append(cmd.Flags, algorithmFlag, ecdsaCurveFlag, rsaKeySizeFlag, expirationFlag)
-	return []*huh.Group{
-		huh.NewGroup(
-			huh.NewSelect[*csr.KeyRequest]().Title("Choose an algorithm").
-				Options(
-					huh.NewOption("RSA", rsa),
-					huh.NewOption("ECDSA", ecdsa),
-					huh.NewOption("Ed25519", ed25519),
-				).
-				Value(&req.KeyRequest),
-		).WithHideFunc(func() bool { return algorithmFlag.IsSet() }),
-		huh.NewGroup(
-			huh.NewSelect[int]().
-				Title("Choose an RSA key size").
-				Options(huh.NewOptions[int](2048, 4096, 6144, 8192)...).
-				Value(&rsa.S),
-		).WithHideFunc(func() bool { return rsaKeySizeFlag.IsSet() || req.KeyRequest.A != rsa.A }),
-		huh.NewGroup(
-			huh.NewSelect[int]().
-				Title("Choose an ECDSA curve").
-				Options(huh.NewOptions[int](256, 384, 521)...).
-				Value(&ecdsa.S),
-		).WithHideFunc(func() bool { return ecdsaCurveFlag.IsSet() || req.KeyRequest.A != ecdsa.A }),
-		huh.NewGroup(
-			huh.NewInput().
-				Title("Enter an expiration time").
-				Validate(func(s string) error {
-					_, err := time.ParseDuration(s)
-					return err
-				}).
-				Value(&req.CA.Expiry),
-		).WithHideFunc(func() bool { return expirationFlag.IsSet() }),
 	}
 }
 
@@ -205,13 +207,13 @@ func fmtRequstDetails(req *csr.CertificateRequest) func() string {
 		sb := &strings.Builder{}
 		w := tabwriter.NewWriter(sb, 0, 0, 1, ' ', 0)
 		fmt.Fprintf(w, "Name\t: %s\n", must(req.Name()))
-		fmt.Fprintf(w, "Expires\t: %s\n", time.Now().Add(must(time.ParseDuration(req.CA.Expiry))).Format(time.RFC1123))
+		fmt.Fprintf(w, "Expires\t: ≈ %s\n", time.Now().Add(must(time.ParseDuration(req.CA.Expiry))).Format(time.RFC1123))
 		fmt.Fprintf(w, "Algorithm\t: %s\n", req.KeyRequest.Algo())
 		switch req.KeyRequest.Algo() {
 		case "rsa":
 			fmt.Fprintf(w, "Key Size\t: %d", req.KeyRequest.Size())
 		case "ecdsa":
-			fmt.Fprintf(w, "ECDSA Curve\t: %d", req.KeyRequest.Size())
+			fmt.Fprintf(w, "Curve\t: %d", req.KeyRequest.Size())
 		}
 		w.Flush()
 		return sb.String()
