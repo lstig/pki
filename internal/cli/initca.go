@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"crypto/elliptic"
 	"errors"
 	"fmt"
 	"iter"
@@ -28,8 +29,14 @@ const (
 
 func newInitCACommand() *cli.Command {
 	var (
+		defaultCurve = elliptic.P384().Params().Name
+		curves       = map[string]int{
+			elliptic.P256().Params().Name: elliptic.P256().Params().BitSize,
+			elliptic.P384().Params().Name: elliptic.P384().Params().BitSize,
+			elliptic.P521().Params().Name: elliptic.P521().Params().BitSize,
+		}
 		keys = map[string]*csr.KeyRequest{
-			ECDSA:   {A: ECDSA, S: 384},
+			ECDSA:   {A: ECDSA, S: curves[defaultCurve]},
 			RSA:     {A: RSA, S: 4096},
 			Ed25519: {A: Ed25519},
 		}
@@ -55,13 +62,25 @@ func newInitCACommand() *cli.Command {
 			Action: func(_ context.Context, _ *cli.Command, s string) error {
 				key, ok := keys[s]
 				if !ok {
-					return fmt.Errorf("unsupported algorithm '%s'", s)
+					return fmt.Errorf("unknown algorithm '%s'", s)
 				}
 				req.KeyRequest = key
 				return nil
 			},
 		}
-		ecdsaCurve = &cli.IntFlag{Name: "ecdsa-curve", Usage: "ECDSA curve", Destination: &keys[ECDSA].S, Value: keys[ECDSA].S}
+		ellipticCurve = &cli.StringFlag{
+			Name:  "elliptic-curve",
+			Usage: fmt.Sprintf("Elliptic curve (choices: %s)", strings.Join(slices.Sorted(maps.Keys(curves)), ", ")),
+			Value: defaultCurve,
+			Action: func(_ context.Context, _ *cli.Command, s string) error {
+				size, ok := curves[s]
+				if !ok {
+					return fmt.Errorf("unknown elliptic curve '%s'", s)
+				}
+				keys[ECDSA].S = size
+				return nil
+			},
+		}
 		rsaKeySize = &cli.IntFlag{Name: "rsa-key-size", Usage: "RSA key size", Destination: &keys[RSA].S, Value: keys[RSA].S}
 		expiration = &cli.StringFlag{Name: "expiration", Usage: "Certificate expiration time", Destination: &req.CA.Expiry, Value: req.CA.Expiry, Validator: func(s string) error {
 			_, err := time.ParseDuration(s)
@@ -83,7 +102,7 @@ func newInitCACommand() *cli.Command {
 			caOrg,
 			caOrgUnit,
 			algorithm,
-			ecdsaCurve,
+			ellipticCurve,
 			rsaKeySize,
 			expiration,
 			forceFlag,
@@ -138,9 +157,9 @@ func newInitCACommand() *cli.Command {
 				huh.NewGroup(
 					huh.NewSelect[int]().
 						Title("Choose an ECDSA curve").
-						Options(huh.NewOptions[int](256, 384, 521)...).
+						Options(slices.Collect(mapOptions(curves))...).
 						Value(&keys[ECDSA].S),
-				).WithHideFunc(func() bool { return ecdsaCurve.IsSet() || req.KeyRequest.A != ECDSA }),
+				).WithHideFunc(func() bool { return ellipticCurve.IsSet() || req.KeyRequest.A != ECDSA }),
 				huh.NewGroup(
 					huh.NewInput().
 						Title("Enter an expiration time").
