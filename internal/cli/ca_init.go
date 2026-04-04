@@ -27,7 +27,7 @@ const (
 	DefaultKeyRequest = ECDSA
 )
 
-func newInitCACommand() *cli.Command {
+func newCAInitCmd() *cli.Command {
 	var (
 		defaultCurve = elliptic.P384().Params().Name
 		curves       = map[string]int{
@@ -92,7 +92,7 @@ func newInitCACommand() *cli.Command {
 	)
 
 	cmd := &cli.Command{
-		Name:  "initca",
+		Name:  "init",
 		Usage: "Generate certificate authority root certificate",
 		Flags: []cli.Flag{
 			caName,

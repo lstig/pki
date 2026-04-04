@@ -13,8 +13,8 @@ func New(info goversion.Info) *cli.Command {
 		Usage:       info.Description,
 		HideVersion: true,
 		Commands: []*cli.Command{
+			newCACmd(),
 			newGenpassCmd(),
-			newInitCACommand(),
 			newVersionCmd(info),
 		},
 	}
