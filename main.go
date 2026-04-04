@@ -18,8 +18,8 @@ var (
 	treeState = "not-built-correctly"
 	date      = "not-built-correctly"
 	builtBy   = "not-built-correctly"
-	//go:embed ascii.txt
-	ascii string
+	//go:embed logo.txt
+	logo string
 )
 
 func main() {
@@ -34,7 +34,7 @@ func versionInfo() goversion.Info {
 	return goversion.GetVersionInfo(
 		goversion.WithAppDetails("pki", "Air-gapped PKI helper utility", "https://github.com/lstig/pki"),
 		goversion.WithBuiltBy(builtBy),
-		goversion.WithASCIIName(ascii),
+		goversion.WithASCIIName(logo),
 		func(i *goversion.Info) {
 			i.GitCommit = version
 			i.GitCommit = commit
