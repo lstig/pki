@@ -1,8 +1,6 @@
 package cli
 
-import (
-	"github.com/urfave/cli/v3"
-)
+import "github.com/urfave/cli/v3"
 
 func newCACmd() *cli.Command {
 	return &cli.Command{

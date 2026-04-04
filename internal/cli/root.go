@@ -1,8 +1,6 @@
 package cli
 
 import (
-	_ "embed"
-
 	goversion "github.com/caarlos0/go-version"
 	"github.com/urfave/cli/v3"
 )
