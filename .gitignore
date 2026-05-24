@@ -5,3 +5,5 @@ output/
 *.csr
 # Added by goreleaser init:
 dist/
+# Directory for scratchwork
+.worktrees/
