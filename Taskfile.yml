@@ -3,7 +3,9 @@
 version: '3'
 
 vars:
-  IMAGE_BUILDER: ghcr.io/osbuild/image-builder-cli:latest@sha256:f50eeec5689673314a1c73772d7721bd4090e9e25aee40075488ec31857c59f6
+  IMAGE_BUILDER_TAG: sha-b3b7c128c6a3e3561c244b30d4534b2f065e6b91
+  IMAGE_BUILDER_DIGEST: sha256:01666d15ece0e5fecb4f65b30598b20fdde84bfd4b65441f6779565dc78e0b93
+  IMAGE_BUILDER: ghcr.io/osbuild/image-builder:{{.IMAGE_BUILDER_TAG}}@{{.IMAGE_BUILDER_DIGEST}}
   DISTRO: fedora-43
   ARCH: aarch64
   OSTREE_REF: fedora/stable/{{.ARCH}}/iot
