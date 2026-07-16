@@ -3,12 +3,21 @@ description = "Additional customizations applied to the final system image"
 version = "0.0.1"
 
 [customizations.kernel]
-# only log errors and above so we don't spam the console
-append = "loglevel=3"
+# loglevel=3            only log errors and above so we don't spam the console
+# lockdown              restrict root's access to the running kernel
+# module.sig_enforce    refuse to load unsigned modules
+# init_on_alloc/free    zero heap pages on alloc and free
+# slab_nomerge          keep slab caches separate to blunt heap exploits
+# randomize_kstack      randomize the kernel stack offset per syscall
+append = "loglevel=3 lockdown=confidentiality module.sig_enforce=1 init_on_alloc=1 init_on_free=1 slab_nomerge randomize_kstack_offset=1"
+
+[customizations.services]
+masked = ["bluetooth", "wpa_supplicant", "avahi-daemon"]
 
 [[customizations.user]]
-name = "root"
-password = "root"
+# locked, non-root admin user for operations on the host.
+name = "pkiadmin"
+description = "PKI appliance operator"
 shell = "/bin/bash"
 
 [[customizations.filesystem]]
@@ -19,13 +28,121 @@ size = "8 GiB"
 mountpoint = "/var"
 size = "1 GiB"
 
+[[customizations.filesystem]]
+mountpoint = "/home"
+size = "1 GiB"
+
+[[customizations.filesystem]]
+mountpoint = "/tmp"
+size = "1 GiB"
+
+[[customizations.filesystem]]
+mountpoint = "/var/tmp"
+size = "512 MiB"
+
+# Autologin pkiadmin on the local HDMI console (tty1). Acceptable only because
+# the device is airgapped and under physical custody during a ceremony.
+[[customizations.files]]
+path = "/etc/systemd/system/getty@tty1.service.d/autologin.conf"
+mode = "0644"
+user = "root"
+group = "root"
+data = """
+[Service]
+ExecStart=
+ExecStart=-/sbin/agetty --autologin pkiadmin --noclear %I $TERM
+"""
+
+# polkit rule: allow pkiadmin to mount/unmount, unlock/lock and FORMAT removable
+# media via udisks2, and to start/stop only the tmpfs workspace unit. The
+# non-"-system" udisks2 action ids apply exclusively to hotplugged/USB devices,
+# so the internal OS disk (mmcblk/SD) is never in scope.
+[[customizations.files]]
+path = "/etc/polkit-1/rules.d/50-pkiadmin.rules"
+mode = "0644"
+user = "root"
+group = "root"
+data = """
+polkit.addRule(function(action, subject) {
+    if (subject.user !== "pkiadmin") {
+        return;
+    }
+
+    // udisks2 on REMOVABLE media only: mount/unmount, unlock/lock, and
+    // format (Format is what creates the LUKS container). The "-system"
+    // variants are deliberately omitted so fixed disks stay off-limits.
+    switch (action.id) {
+    case "org.freedesktop.udisks2.filesystem-mount":
+    case "org.freedesktop.udisks2.filesystem-unmount-others":
+    case "org.freedesktop.udisks2.encrypted-unlock":
+    case "org.freedesktop.udisks2.encrypted-lock":
+    case "org.freedesktop.udisks2.modify-device":
+        return polkit.Result.YES;
+    }
+
+    // systemd: start/stop ONLY the in-memory ceremony workspace.
+    if (action.id === "org.freedesktop.systemd1.manage-units" &&
+        action.lookup("unit") === "mnt-ceremony.mount") {
+        return polkit.Result.YES;
+    }
+});
+"""
+
+# In-memory workspace, mounted on demand (NOT enabled at boot, so it only exists
+# while a ceremony is running). pkiadmin controls it without sudo via polkit,
+# through the pki CLI:
+#   pki ceremony workspace up      # mount
+#   pki ceremony workspace down    # unmount (frees the RAM)
+[[customizations.files]]
+path = "/etc/systemd/system/mnt-ceremony.mount"
+mode = "0644"
+user = "root"
+group = "root"
+data = """
+[Unit]
+Description=In-memory ceremony workspace (tmpfs)
+
+[Mount]
+What=tmpfs
+Where=/mnt/ceremony
+Type=tmpfs
+Options=rw,nosuid,nodev,noexec,relatime,size=512M,mode=0700,uid=pkiadmin,gid=pkiadmin
+"""
+
 [[customizations.files]]
 path = "/etc/modprobe.d/blockwireless.conf"
 mode = "0644"
 user = "root"
 group = "root"
 data = """
-blacklist bluetooth
+# `blacklist` stops udev/hotplug autoload; `install … /bin/false` also blocks
+# manual and dependency-triggered loads. Both are used for defense in depth.
+
+# Wi-Fi leaf drivers (Broadcom on Raspberry Pi)
 blacklist brcmfmac
 blacklist brcmfmac_wcc
+install brcmfmac /bin/false
+install brcmfmac_wcc /bin/false
+
+# Wi-Fi subsystem
+blacklist cfg80211
+blacklist mac80211
+blacklist brcmutil
+install cfg80211 /bin/false
+install mac80211 /bin/false
+install brcmutil /bin/false
+
+# Bluetooth stack
+blacklist bluetooth
+blacklist btbcm
+blacklist hci_uart
+blacklist btusb
+blacklist bnep
+blacklist btsdio
+install bluetooth /bin/false
+install btbcm /bin/false
+install hci_uart /bin/false
+install btusb /bin/false
+install bnep /bin/false
+install btsdio /bin/false
 """
