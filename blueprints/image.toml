@@ -19,20 +19,24 @@ masked = ["bluetooth", "wpa_supplicant", "avahi-daemon"]
 name = "alice"
 description = "PKI appliance operator"
 shell = "/bin/bash"
+home = "/var/home/alice"
 
 [[customizations.filesystem]]
 mountpoint = "/"
 size = "8 GiB"
-
-[[customizations.filesystem]]
-mountpoint = "/var"
-size = "1 GiB"
 
 [[customizations.directories]]
 path = "/etc/systemd/system/getty@tty1.service.d"
 mode = "0755"
 user = "root"
 group = "root"
+
+[[customizations.files]]
+path = "/etc/tmpfiles.d/home-alice.conf"
+mode = "0644"
+user = "root"
+group = "root"
+data = "d /var/home/alice 0700 alice alice - -\n"
 
 [[customizations.files]]
 path = "/etc/systemd/system/getty@tty1.service.d/autologin.conf"
@@ -98,7 +102,7 @@ Description=In-memory ceremony workspace (tmpfs)
 What=tmpfs
 Where=/mnt/ceremony
 Type=tmpfs
-Options=rw,nosuid,nodev,noexec,relatime,size=512M,mode=0700,uid=alice,gid=alice
+Options=rw,nosuid,nodev,noexec,relatime,size=256M,mode=0700,uid=alice,gid=alice
 """
 
 [[customizations.files]]
