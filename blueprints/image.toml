@@ -25,18 +25,25 @@ home = "/var/home/alice"
 mountpoint = "/"
 size = "8 GiB"
 
-[[customizations.directories]]
-path = "/etc/systemd/system/getty@tty1.service.d"
-mode = "0755"
-user = "root"
-group = "root"
-
 [[customizations.files]]
 path = "/etc/tmpfiles.d/home-alice.conf"
 mode = "0644"
 user = "root"
 group = "root"
 data = "d /var/home/alice 0700 alice alice - -\n"
+
+[[customizations.files]]
+path = "/etc/sudoers.d/alice"
+mode = "0640"
+user = "root"
+group = "root"
+data = "alice ALL=(ALL:ALL) NOPASSWD: /sbin/shutdown\n"
+
+[[customizations.directories]]
+path = "/etc/systemd/system/getty@tty1.service.d"
+mode = "0755"
+user = "root"
+group = "root"
 
 [[customizations.files]]
 path = "/etc/systemd/system/getty@tty1.service.d/autologin.conf"
