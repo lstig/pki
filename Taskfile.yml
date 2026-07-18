@@ -6,13 +6,13 @@ vars:
   IMAGE_BUILDER_TAG: sha-b3b7c128c6a3e3561c244b30d4534b2f065e6b91
   IMAGE_BUILDER_DIGEST: sha256:01666d15ece0e5fecb4f65b30598b20fdde84bfd4b65441f6779565dc78e0b93
   IMAGE_BUILDER: ghcr.io/osbuild/image-builder:{{.IMAGE_BUILDER_TAG}}@{{.IMAGE_BUILDER_DIGEST}}
-  DISTRO: fedora-43
+  DISTRO: fedora-44
   ARCH: aarch64
-  OSTREE_REF: fedora/stable/{{.ARCH}}/iot
+  BLUEPRINT: '{{joinPath .ROOT_DIR "blueprint.toml"}}'
   OUTPUT_DIR: '{{joinPath .ROOT_DIR "output"}}'
-  BLUEPRINTS_DIR: '{{joinPath .ROOT_DIR "blueprints"}}'
   REPO_DIR: '{{joinPath .OUTPUT_DIR "repos"}}'
   PKG_REPO_DIR: '{{joinPath .REPO_DIR "ExtraPackages"}}'
+  RAW_IMAGE: 'output/{{.DISTRO}}-minimal-raw-xz-{{.ARCH}}.raw.xz'
 
 tasks:
   build:package:
@@ -31,67 +31,27 @@ tasks:
     generates:
       - '{{.PKG_REPO_DIR}}/repodata/repomd.xml'
 
-  build:iot-commit:
-    desc: Generate the iot-commit ostree repository
+  build:image:
+    desc: Build the device image (plain Fedora minimal-raw)
     deps:
       - build:package
     cmds:
       - >-
         docker run -it --rm --privileged \
+          -v "{{.BLUEPRINT}}":/blueprint.toml:ro \
           -v "{{.OUTPUT_DIR}}":/output \
-          -v "{{.BLUEPRINTS_DIR}}":/blueprints \
-          -v "{{.PKG_REPO_DIR}}:/repo" \
-          {{.IMAGE_BUILDER}} build iot-commit \
+          -v "{{.PKG_REPO_DIR}}":/repo \
+          {{.IMAGE_BUILDER}} build minimal-raw \
             --arch {{.ARCH}} \
             --distro {{.DISTRO}} \
             --extra-repo file:///repo \
-            --ostree-ref {{.OSTREE_REF}} \
-            --blueprint /blueprints/base.toml \
+            --blueprint /blueprint.toml \
             --output-dir /output
     sources:
-      - blueprints/base.toml
+      - '{{.BLUEPRINT}}'
       - '{{.PKG_REPO_DIR}}/repodata/repomd.xml'
     generates:
-      - 'output/{{.DISTRO}}-iot-commit-{{.ARCH}}.tar'
-
-  build:image:
-    desc: Build the device image
-    deps:
-      - build:iot-commit
-    vars:
-      IOT_REPO_DIR: '{{joinPath .REPO_DIR "iot"}}'
-      NETWORK: builder
-    cmds:
-      - docker network create {{.NETWORK}}
-      - defer: docker network rm {{.NETWORK}}
-      - mkdir -p "{{.IOT_REPO_DIR}}"
-      - tar xf output/{{.DISTRO}}-iot-commit-{{.ARCH}}.tar -C "{{.IOT_REPO_DIR}}" --strip-components=2 repo
-      - defer: rm -rf "{{.IOT_REPO_DIR}}"
-      - >-
-        docker run -d --rm \
-          -v "{{.IOT_REPO_DIR}}":/repo \
-          --workdir /repo \
-          --name repo \
-          --network {{.NETWORK}} \
-          cgr.dev/chainguard/python -m http.server 8000
-      - defer: docker container stop repo
-      - >-
-        docker run -it --rm --privileged \
-          -v "{{.OUTPUT_DIR}}":/output \
-          -v "{{.BLUEPRINTS_DIR}}":/blueprints \
-          --network {{.NETWORK}} \
-          {{.IMAGE_BUILDER}} build iot-raw-xz \
-            --arch {{.ARCH}} \
-            --distro {{.DISTRO}} \
-            --ostree-ref {{.OSTREE_REF}} \
-            --ostree-url http://repo:8000 \
-            --blueprint /blueprints/image.toml \
-            --output-dir /output
-    sources:
-      - blueprints/image.toml
-      - 'output/{{.DISTRO}}-iot-commit-{{.ARCH}}.tar'
-    generates:
-      - 'output/{{.DISTRO}}-iot-raw-xz-{{.ARCH}}.raw.xz'
+      - '{{.RAW_IMAGE}}'
 
   write:*:
     desc: Write the device image to a disk attached to this system
@@ -105,7 +65,7 @@ tasks:
     cmds:
       - diskutil eraseDisk "MS-DOS" DISK MBR {{.IDENTIFIER}}
       - diskutil unmountDisk force {{.IDENTIFIER}}
-      - 'xzcat "output/{{.DISTRO}}-iot-raw-xz-{{.ARCH}}.raw.xz" | sudo dd status=progress bs=4m of=/dev/r{{.IDENTIFIER}}'
+      - 'xzcat "{{.RAW_IMAGE}}" | sudo dd status=progress bs=4m of=/dev/r{{.IDENTIFIER}}'
       - diskutil unmountDisk {{.IDENTIFIER}}
 
   clean:

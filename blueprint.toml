@@ -1,6 +1,31 @@
-name = "pki-image"
-description = "Additional customizations applied to the final system image"
-version = "0.0.1"
+name = "pki"
+description = "Air-gapped PKI appliance (plain Fedora minimal-raw, no ostree)"
+version = "0.1.0"
+
+packages = [
+    { name = "audit" },
+    { name = "cryptsetup" },
+    { name = "dirmngr" },
+    { name = "gnupg2" },
+    { name = "jq" },
+    { name = "libblockdev-crypto" },
+    { name = "libblockdev-fs" },
+    { name = "opensc" },
+    { name = "openssl" },
+    { name = "paperkey" },
+    { name = "pcsc-lite" },
+    { name = "pinentry" },
+    { name = "rfkill" },
+    { name = "udisks2" },
+    { name = "vim" },
+    { name = "ykpers" },
+    { name = "yubikey-manager" },
+    # custom package with 'pki' command
+    { name = "pki" },
+]
+
+[customizations]
+hostname = "pki"
 
 [customizations.kernel]
 # loglevel=3            only log errors and above so we don't spam the console
@@ -12,29 +37,19 @@ version = "0.0.1"
 append = "loglevel=3 lockdown=confidentiality module.sig_enforce=1 init_on_alloc=1 init_on_free=1 slab_nomerge randomize_kstack_offset=1"
 
 [customizations.services]
-masked = ["bluetooth", "wpa_supplicant", "avahi-daemon"]
+masked = [ "initial-setup", "NetworkManager", "bluetooth", "wpa_supplicant", "avahi-daemon" ]
 
+# Locked, non-root operator. No root user is defined: root's password stays
+# locked and access to the host is tty1 autologin as alice only.
 [[customizations.user]]
-# locked, non-root admin user for operations on the host.
 name = "alice"
 description = "PKI appliance operator"
 shell = "/bin/bash"
-home = "/var/home/alice"
-
-[[customizations.filesystem]]
-mountpoint = "/"
-size = "8 GiB"
-
-[[customizations.files]]
-path = "/etc/tmpfiles.d/home-alice.conf"
-mode = "0644"
-user = "root"
-group = "root"
-data = "d /var/home/alice 0700 alice alice - -\n"
+home = "/home/alice"
 
 [[customizations.files]]
 path = "/etc/sudoers.d/alice"
-mode = "0640"
+mode = "0440"
 user = "root"
 group = "root"
 data = "alice ALL=(ALL:ALL) NOPASSWD: /sbin/shutdown\n"
