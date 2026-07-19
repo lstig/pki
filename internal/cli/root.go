@@ -12,6 +12,7 @@ func New(info goversion.Info) *cli.Command {
 		HideVersion: true,
 		Commands: []*cli.Command{
 			newCACmd(),
+			newWorkspaceCmd(),
 			newGenpassCmd(),
 			newVersionCmd(info),
 		},
