@@ -5,6 +5,7 @@ version = "0.1.0"
 packages = [
     { name = "audit" },
     { name = "cryptsetup" },
+    { name = "direnv" },
     { name = "dirmngr" },
     { name = "gnupg2" },
     { name = "jq" },
@@ -107,6 +108,37 @@ polkit.addRule(function(action, subject) {
         }
     }
 });
+"""
+
+# Install direnv globally, we'll use it to source .envrc in
+[[customizations.files]]
+path = "/etc/profile.d/direnv.sh"
+mode = "0644"
+user = "root"
+group = "root"
+data = """
+export DIRENV_CONFIG=/etc/direnv
+eval "$(direnv hook bash)"
+"""
+
+[[customizations.directories]]
+path = "/etc/direnv"
+mode = "0755"
+user = "root"
+group = "root"
+
+# Explicitly allow .envrc files in /mnt/workspace
+[[customizations.files]]
+path = "/etc/direnv/config.toml"
+mode = "0644"
+user = "root"
+group = "root"
+data = """
+[global]
+strict_env = true
+
+[whitelist]
+prefix = [ "/mnt/workspace" ]
 """
 
 # In-memory workspace, mounted on demand (NOT enabled at boot, so it only exists

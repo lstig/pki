@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 
 	"github.com/godbus/dbus/v5"
 	"github.com/urfave/cli/v3"
@@ -31,7 +33,9 @@ func newWorkspaceCmd() *cli.Command {
 						return fmt.Errorf("could not mount workspace: %w", err)
 					}
 					slog.Info("workspace mounted", slog.String("path", WorkspacePath))
-					return nil
+					// TODO(lstig): there's a race condition, here the StartUnit needs to wait for
+					// the systemd to complete or this write might fail.
+					return os.WriteFile(filepath.Join(WorkspacePath, ".envrc"), []byte("export TEST_ENV=hi"), 0444)
 				}),
 			},
 			{
