@@ -36,7 +36,7 @@ func newWorkspaceCmd() *cli.Command {
 			},
 			{
 				Name:  "down",
-				Usage: "Unmount the in-memory workspace and free the RAM",
+				Usage: "Unmount the in-memory workspace",
 				Action: withClient(func(ctx context.Context, _ *cli.Command, conn *dbus.Conn) error {
 					if err := systemd.StopUnit(ctx, conn, WorkspaceUnit); err != nil {
 						return fmt.Errorf("could not unmount workspace: %w", err)
