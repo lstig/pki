@@ -33,8 +33,8 @@ func newWorkspaceCmd() *cli.Command {
 						return fmt.Errorf("could not mount workspace: %w", err)
 					}
 					slog.Info("workspace mounted", slog.String("path", WorkspacePath))
-					// TODO(lstig): there's a race condition, here the StartUnit needs to wait for
-					// the systemd to complete or this write might fail.
+					// TODO(lstig): there's a race condition here. the StartUnit needs
+					// to wait for the systemd job to complete or this write might fail.
 					return os.WriteFile(filepath.Join(WorkspacePath, ".envrc"), []byte("export TEST_ENV=hi"), 0444)
 				}),
 			},
