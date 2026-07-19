@@ -18,7 +18,7 @@ tasks:
   build:package:
     desc: Generate the PKI package and an RPM repository
     cmds:
-      - goreleaser build --clean --auto-snapshot
+      - goreleaser release --clean --auto-snapshot
       - mkdir -p "{{.PKG_REPO_DIR}}"
       - cp dist/*.rpm "{{.PKG_REPO_DIR}}"
       - >-
