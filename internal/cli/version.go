@@ -14,7 +14,7 @@ func newVersionCmd(info goversion.Info) *cli.Command {
 		Name:  "version",
 		Usage: "print version information",
 		Action: func(_ context.Context, _ *cli.Command) error {
-			fmt.Fprintf(os.Stderr, info.String())
+			fmt.Fprint(os.Stderr, info.String())
 			return nil
 		},
 	}
