@@ -93,7 +93,7 @@ polkit.addRule(function(action, subject) {
     case "org.freedesktop.udisks2.filesystem-mount":
     case "org.freedesktop.udisks2.filesystem-unmount-others":
     case "org.freedesktop.udisks2.encrypted-unlock":
-    case "org.freedesktop.udisks2.encrypted-lock":
+    case "org.freedesktop.udisks2.encrypted-lock-others":
     case "org.freedesktop.udisks2.modify-device":
         return polkit.Result.YES;
     }
