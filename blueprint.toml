@@ -98,10 +98,13 @@ polkit.addRule(function(action, subject) {
         return polkit.Result.YES;
     }
 
-    // systemd: start/stop ONLY the in-memory ceremony workspace.
+    // systemd: start/stop ONLY the in-memory workspace.
     if (action.id === "org.freedesktop.systemd1.manage-units" &&
-        action.lookup("unit") === "mnt-ceremony.mount") {
-        return polkit.Result.YES;
+        action.lookup("unit") === "mnt-workspace.mount") {
+        var verb = action.lookup("verb");
+        if (verb === "start" || verb === "stop") {
+            return polkit.Result.YES;
+        }
     }
 });
 """
@@ -109,20 +112,20 @@ polkit.addRule(function(action, subject) {
 # In-memory workspace, mounted on demand (NOT enabled at boot, so it only exists
 # while a ceremony is running). alice controls it without sudo via polkit,
 # through the pki CLI:
-#   pki ceremony workspace up      # mount
-#   pki ceremony workspace down    # unmount (frees the RAM)
+#   pki workspace up      # mount
+#   pki workspace down    # unmount (frees the RAM)
 [[customizations.files]]
-path = "/etc/systemd/system/mnt-ceremony.mount"
+path = "/etc/systemd/system/mnt-workspace.mount"
 mode = "0644"
 user = "root"
 group = "root"
 data = """
 [Unit]
-Description=In-memory ceremony workspace (tmpfs)
+Description=In-memory workspace (tmpfs)
 
 [Mount]
 What=tmpfs
-Where=/mnt/ceremony
+Where=/mnt/workspace
 Type=tmpfs
 Options=rw,nosuid,nodev,noexec,relatime,size=256M,mode=0700,uid=alice,gid=alice
 """
