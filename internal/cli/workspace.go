@@ -2,11 +2,13 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
+	"github.com/godbus/dbus/v5"
 	"github.com/urfave/cli/v3"
 
-	"github.com/lstig/pki/internal/dbus"
+	"github.com/lstig/pki/internal/systemd"
 )
 
 const (
@@ -24,9 +26,9 @@ func newWorkspaceCmd() *cli.Command {
 			{
 				Name:  "up",
 				Usage: "Mount the in-memory workspace",
-				Action: withClient(func(_ context.Context, _ *cli.Command, c *dbus.Client) error {
-					if err := c.Start(WorkspaceUnit); err != nil {
-						return err
+				Action: withClient(func(ctx context.Context, _ *cli.Command, conn *dbus.Conn) error {
+					if err := systemd.StartUnit(ctx, conn, WorkspaceUnit); err != nil {
+						return fmt.Errorf("could not mount workspace: %w", err)
 					}
 					slog.Info("workspace mounted", slog.String("path", WorkspacePath))
 					return nil
@@ -35,9 +37,9 @@ func newWorkspaceCmd() *cli.Command {
 			{
 				Name:  "down",
 				Usage: "Unmount the in-memory workspace and free the RAM",
-				Action: withClient(func(_ context.Context, _ *cli.Command, c *dbus.Client) error {
-					if err := c.Stop(WorkspaceUnit); err != nil {
-						return err
+				Action: withClient(func(ctx context.Context, _ *cli.Command, conn *dbus.Conn) error {
+					if err := systemd.StopUnit(ctx, conn, WorkspaceUnit); err != nil {
+						return fmt.Errorf("could not unmount workspace: %w", err)
 					}
 					slog.Info("workspace unmounted")
 					return nil
@@ -48,9 +50,9 @@ func newWorkspaceCmd() *cli.Command {
 }
 
 // withClient dials the system bus, runs fn, and always closes the connection.
-func withClient(fn func(context.Context, *cli.Command, *dbus.Client) error) cli.ActionFunc {
+func withClient(fn func(context.Context, *cli.Command, *dbus.Conn) error) cli.ActionFunc {
 	return func(ctx context.Context, cmd *cli.Command) error {
-		c, err := dbus.Dial()
+		c, err := dbus.ConnectSystemBus()
 		if err != nil {
 			return err
 		}
