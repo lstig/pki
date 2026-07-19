@@ -36,10 +36,9 @@ func (c *Client) Start(unit string) error { return c.systemdJob("StartUnit", uni
 func (c *Client) Stop(unit string) error { return c.systemdJob("StopUnit", unit) }
 
 func (c *Client) systemdJob(method, unit string) error {
-	var p dbus.ObjectPath
 	obj := c.conn.Object(systemdService, systemdPath)
-	if err := obj.Call(ifaceSystemd+"."+method, 0, unit, "replace").Store(&p); err != nil {
-		return fmt.Errorf("%s %s: %w", method, unit, err)
+	if call := obj.Call(ifaceSystemd+"."+method, 0, unit, "replace"); call.Err != nil {
+		return fmt.Errorf("%s %s: %w", method, unit, call.Err)
 	}
 	return nil
 }
