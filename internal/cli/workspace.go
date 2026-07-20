@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
-	"path/filepath"
 
 	systemd "github.com/coreos/go-systemd/v22/dbus"
 	"github.com/urfave/cli/v3"
+
+	"github.com/lstig/pki/internal/workspace"
 )
 
 const (
@@ -40,7 +40,7 @@ func newWorkspaceCmd() *cli.Command {
 						}
 					}
 					slog.Info("workspace mounted", slog.String("path", WorkspacePath))
-					return os.WriteFile(filepath.Join(WorkspacePath, ".envrc"), []byte("export TEST_ENV=hi"), 0444)
+					return workspace.Write(WorkspacePath)
 				}),
 			},
 			{
