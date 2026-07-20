@@ -6,6 +6,7 @@ require (
 	github.com/caarlos0/go-version v0.2.2
 	github.com/charmbracelet/huh v1.0.0
 	github.com/cloudflare/cfssl v1.6.5
+	github.com/coreos/go-systemd/v22 v22.5.0
 	github.com/godbus/dbus/v5 v5.2.2
 	github.com/urfave/cli/v3 v3.10.1
 )
