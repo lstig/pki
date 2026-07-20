@@ -2,21 +2,28 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
+	"os"
+	"path/filepath"
 
-	systemd "github.com/coreos/go-systemd/v22/dbus"
 	"github.com/urfave/cli/v3"
 
 	"github.com/lstig/pki/internal/workspace"
 )
 
-const (
-	// WorkspacePath is where the in-memory tmpfs workspace is mounted.
-	WorkspacePath = "/mnt/workspace"
-	// WorkspaceUnit is the systemd mount unit backing the workspace.
-	WorkspaceUnit = "mnt-workspace.mount"
-)
+// workspacePath returns the workspace directory inside the user's runtime
+// dir (/run/user/<uid>), a per-session tmpfs created by systemd-logind — so
+// the workspace is RAM-backed and needs no privileges or mount units.
+func workspacePath() (string, error) {
+	dir := os.Getenv("XDG_RUNTIME_DIR")
+	if dir == "" {
+		return "", errors.New("XDG_RUNTIME_DIR is not set (no login session?)")
+	}
+	return filepath.Join(dir, "workspace"), nil
+}
 
 func newWorkspaceCmd() *cli.Command {
 	return &cli.Command{
@@ -25,56 +32,53 @@ func newWorkspaceCmd() *cli.Command {
 		Commands: []*cli.Command{
 			{
 				Name:  "up",
-				Usage: "Mount the in-memory workspace",
-				Action: withClient(func(ctx context.Context, _ *cli.Command, conn *systemd.Conn) error {
-					done := make(chan string, 1)
-					if _, err := conn.StartUnitContext(ctx, WorkspaceUnit, "replace", done); err != nil {
-						return fmt.Errorf("could not mount workspace: %w", err)
+				Usage: "Create the in-memory workspace",
+				Action: func(_ context.Context, _ *cli.Command) error {
+					dir, err := workspacePath()
+					if err != nil {
+						return err
 					}
-					select {
-					case <-ctx.Done():
-						return ctx.Err()
-					case result := <-done:
-						if result != "done" {
-							return fmt.Errorf("%s did not start successfully, finished with state: %s", WorkspaceUnit, result)
+					if err := os.Mkdir(dir, 0700); err != nil {
+						if errors.Is(err, fs.ErrExist) {
+							slog.Info("workspace already up", slog.String("path", dir))
+							return nil
 						}
+						return err
 					}
-					slog.Info("workspace mounted", slog.String("path", WorkspacePath))
-					return workspace.Write(WorkspacePath)
-				}),
+					if err := workspace.Write(dir); err != nil {
+						return err
+					}
+					slog.Info("workspace ready", slog.String("path", dir))
+					return nil
+				},
+			},
+			{
+				Name:  "path",
+				Usage: "Print the workspace path",
+				Action: func(_ context.Context, _ *cli.Command) error {
+					dir, err := workspacePath()
+					if err != nil {
+						return err
+					}
+					fmt.Println(dir)
+					return nil
+				},
 			},
 			{
 				Name:  "down",
-				Usage: "Unmount the in-memory workspace",
-				Action: withClient(func(ctx context.Context, _ *cli.Command, conn *systemd.Conn) error {
-					done := make(chan string, 1)
-					if _, err := conn.StopUnitContext(ctx, WorkspaceUnit, "replace", done); err != nil {
-						return fmt.Errorf("could not unmount workspace: %w", err)
+				Usage: "Remove the in-memory workspace",
+				Action: func(_ context.Context, _ *cli.Command) error {
+					dir, err := workspacePath()
+					if err != nil {
+						return err
 					}
-					select {
-					case <-ctx.Done():
-						return ctx.Err()
-					case result := <-done:
-						if result != "done" {
-							return fmt.Errorf("%s did not stop successfully, finished with state: %s", WorkspaceUnit, result)
-						}
+					if err := os.RemoveAll(dir); err != nil {
+						return err
 					}
-					slog.Info("workspace unmounted")
+					slog.Info("workspace removed")
 					return nil
-				}),
+				},
 			},
 		},
-	}
-}
-
-// withClient dials the system bus, runs fn, and always closes the connection.
-func withClient(fn func(context.Context, *cli.Command, *systemd.Conn) error) cli.ActionFunc {
-	return func(ctx context.Context, cmd *cli.Command) error {
-		c, err := systemd.NewSystemConnectionContext(ctx)
-		if err != nil {
-			return err
-		}
-		defer c.Close()
-		return fn(ctx, cmd, c)
 	}
 }

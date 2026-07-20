@@ -73,9 +73,9 @@ ExecStart=-/sbin/agetty --autologin alice --noclear %I $TERM
 """
 
 # polkit rule: allow alice to mount/unmount, unlock/lock and FORMAT removable
-# media via udisks2, and to start/stop only the tmpfs workspace unit. The
-# non-"-system" udisks2 action ids apply exclusively to hotplugged/USB devices,
-# so the internal OS disk (mmcblk/SD) is never in scope.
+# media via udisks2. The non-"-system" udisks2 action ids apply exclusively to
+# hotplugged/USB devices, so the internal OS disk (mmcblk/SD) is never in
+# scope.
 [[customizations.files]]
 path = "/etc/polkit-1/rules.d/50-alice.rules"
 mode = "0644"
@@ -98,16 +98,33 @@ polkit.addRule(function(action, subject) {
     case "org.freedesktop.udisks2.modify-device":
         return polkit.Result.YES;
     }
-
-    // systemd: start/stop ONLY the in-memory workspace.
-    if (action.id === "org.freedesktop.systemd1.manage-units" &&
-        action.lookup("unit") === "mnt-workspace.mount") {
-        var verb = action.lookup("verb");
-        if (verb === "start" || verb === "stop") {
-            return polkit.Result.YES;
-        }
-    }
 });
+"""
+
+# Shell wrapper so `pki workspace up` drops the shell into the workspace and
+# `pki workspace down` returns it home. A child process cannot change the
+# shell's cwd, so this must live in the shell itself.
+[[customizations.files]]
+path = "/etc/profile.d/pki.sh"
+mode = "0644"
+user = "root"
+group = "root"
+data = """
+pki() {
+    local ws
+    command pki "$@" || return
+    if [ "$1" = "workspace" ]; then
+        ws="$(command pki workspace path)" || return 0
+        case "$2" in
+        up) cd "$ws" ;;
+        down)
+            case "$PWD" in
+            "$ws"*) cd "$HOME" ;;
+            esac
+            ;;
+        esac
+    fi
+}
 """
 
 # Install direnv globally, we'll use it to source .envrc in
@@ -127,7 +144,12 @@ mode = "0755"
 user = "root"
 group = "root"
 
-# Explicitly allow .envrc files in /mnt/workspace
+# Explicitly allow .envrc files in the workspace. The workspace is a plain
+# directory under the user's runtime dir (/run/user/<uid>/workspace) — a
+# per-session tmpfs created by systemd-logind — so it is RAM-backed, dies
+# with the session, and needs no privileges, mount unit, or polkit grant:
+#   pki workspace up      # create + populate
+#   pki workspace down    # remove (frees the RAM)
 [[customizations.files]]
 path = "/etc/direnv/config.toml"
 mode = "0644"
@@ -138,28 +160,7 @@ data = """
 strict_env = true
 
 [whitelist]
-prefix = [ "/mnt/workspace" ]
-"""
-
-# In-memory workspace, mounted on demand (NOT enabled at boot, so it only exists
-# while a ceremony is running). alice controls it without sudo via polkit,
-# through the pki CLI:
-#   pki workspace up      # mount
-#   pki workspace down    # unmount (frees the RAM)
-[[customizations.files]]
-path = "/etc/systemd/system/mnt-workspace.mount"
-mode = "0644"
-user = "root"
-group = "root"
-data = """
-[Unit]
-Description=In-memory workspace (tmpfs)
-
-[Mount]
-What=tmpfs
-Where=/mnt/workspace
-Type=tmpfs
-Options=rw,nosuid,nodev,noexec,relatime,size=256M,mode=0700,uid=alice,gid=alice
+prefix = [ "/run/user/" ]
 """
 
 [[customizations.files]]
