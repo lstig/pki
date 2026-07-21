@@ -13,7 +13,7 @@ import (
 //go:embed all:files
 var files embed.FS
 
-func Write(dest string) error {
+func Initialize(dest string) error {
 	sub, err := fs.Sub(files, "files")
 	if err != nil {
 		return err

@@ -45,7 +45,7 @@ func newWorkspaceCmd() *cli.Command {
 						}
 						return err
 					}
-					if err := workspace.Write(dir); err != nil {
+					if err := workspace.Initialize(dir); err != nil {
 						return err
 					}
 					slog.Info("workspace ready", slog.String("path", dir))
