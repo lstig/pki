@@ -86,7 +86,7 @@ $ pki genpass --mode base32 --group-count 4 --group-size 8
 			if err != nil {
 				return err
 			}
-			fmt.Println(pass)
+			fmt.Fprintln(c.Root().Writer, pass)
 			return nil
 		},
 	}

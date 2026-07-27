@@ -55,12 +55,12 @@ func newWorkspaceCmd() *cli.Command {
 			{
 				Name:  "path",
 				Usage: "Print the workspace path",
-				Action: func(_ context.Context, _ *cli.Command) error {
+				Action: func(_ context.Context, cmd *cli.Command) error {
 					dir, err := workspacePath()
 					if err != nil {
 						return err
 					}
-					fmt.Println(dir)
+					fmt.Fprintln(cmd.Root().Writer, dir)
 					return nil
 				},
 			},

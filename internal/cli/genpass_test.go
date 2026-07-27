@@ -2,43 +2,19 @@ package cli
 
 import (
 	"context"
-	"io"
-	"os"
 	"strings"
 	"testing"
 
 	"github.com/urfave/cli/v3"
 )
 
-// runGenpass runs `pki genpass` with args and returns what the command printed.
-// The action writes to os.Stdout directly, so the pipe swap is the only way to
-// observe which generator the flags were wired to.
+// runGenpass runs `pki genpass` with args and returns the password it printed.
 func runGenpass(t *testing.T, args ...string) (string, error) {
 	t.Helper()
 
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("pipe: %v", err)
-	}
-
-	orig := os.Stdout
-	os.Stdout = w
-	root := testRoot(newGenpassCmd())
-	runErr := root.Run(context.Background(), append([]string{"pki", "genpass"}, args...))
-	os.Stdout = orig
-
-	if err := w.Close(); err != nil {
-		t.Fatalf("close pipe: %v", err)
-	}
-	out, err := io.ReadAll(r)
-	if err != nil {
-		t.Fatalf("read pipe: %v", err)
-	}
-	if err := r.Close(); err != nil {
-		t.Fatalf("close pipe: %v", err)
-	}
-
-	return strings.TrimSuffix(string(out), "\n"), runErr
+	root, out, _ := testRoot(newGenpassCmd())
+	err := root.Run(context.Background(), append([]string{"pki", "genpass"}, args...))
+	return strings.TrimSuffix(out.String(), "\n"), err
 }
 
 // TestGenpassFlags pins that each flag reaches the generator it belongs to:

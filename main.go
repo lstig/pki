@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	_ "embed"
-	"log"
+	"fmt"
 	"os"
 	"os/signal"
 
@@ -26,7 +26,8 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Kill, os.Interrupt)
 	defer cancel()
 	if err := cli.New(versionInfo()).Run(ctx, os.Args); err != nil {
-		log.Fatal(err)
+		fmt.Fprintln(os.Stderr, "pki: "+err.Error())
+		os.Exit(1)
 	}
 }
 

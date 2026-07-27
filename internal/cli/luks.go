@@ -34,16 +34,18 @@ func newLUKSListCmd() *cli.Command {
 	return &cli.Command{
 		Name:  "list",
 		Usage: "List attached removable USB block devices",
-		Action: withLUKS(func(ctx context.Context, _ *cli.Command, client *luks.Client) error {
+		Action: withLUKS(func(ctx context.Context, cmd *cli.Command, client *luks.Client) error {
 			devices, err := client.List(ctx)
 			if err != nil {
 				return err
 			}
+			// A diagnostic, not data: `pki luks list` piped into a filter
+			// should yield nothing when there is nothing attached.
 			if len(devices) == 0 {
-				fmt.Println("no removable USB devices attached")
+				fmt.Fprintln(cmd.Root().ErrWriter, "no removable USB devices attached")
 				return nil
 			}
-			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+			w := tabwriter.NewWriter(cmd.Root().Writer, 0, 0, 2, ' ', 0)
 			fmt.Fprintln(w, "DEVICE\tSIZE\tMODEL\tCONTENT\tSTATUS")
 			for _, d := range devices {
 				device, model := d.Device, orDash(d.Model)

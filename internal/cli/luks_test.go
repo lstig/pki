@@ -46,7 +46,7 @@ func TestLUKSInitFlagResolution(t *testing.T) {
 				return nil
 			}
 
-			root := testRoot(init)
+			root, _, _ := testRoot(init)
 			args := append([]string{"pki", "init"}, tt.args...)
 			if err := root.Run(context.Background(), append(args, "/dev/sdb")); err != nil {
 				t.Fatalf("run: %v", err)
@@ -97,7 +97,7 @@ func TestLUKSInitRequiresPassphraseFile(t *testing.T) {
 			init := newLUKSInitCmd()
 			init.Action = func(context.Context, *cli.Command) error { return nil }
 
-			root := testRoot(init)
+			root, _, _ := testRoot(init)
 			args := append([]string{"pki", "init"}, tt.args...)
 			err := root.Run(context.Background(), append(args, "/dev/sdb"))
 
