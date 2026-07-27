@@ -21,7 +21,7 @@ func TestLUKSInitFlagResolution(t *testing.T) {
 		wantLabel string
 	}{
 		{"defaults", nil, false, false, "pki"},
-		{"yes", []string{"--yes", "--passphrase-file", "pass.txt"}, true, false, "pki"},
+		{"yes", []string{"--yes", "--password-file", "pass.txt"}, true, false, "pki"},
 		{"explicit yes=false", []string{"--yes=false"}, false, false, "pki"},
 		{"force", []string{"--force"}, false, true, "pki"},
 		{"explicit force=false", []string{"--force=false"}, false, false, "pki"},
@@ -46,7 +46,7 @@ func TestLUKSInitFlagResolution(t *testing.T) {
 				return nil
 			}
 
-			root := &cli.Command{Name: "pki", Commands: []*cli.Command{init}}
+			root := testRoot(init)
 			args := append([]string{"pki", "init"}, tt.args...)
 			if err := root.Run(context.Background(), append(args, "/dev/sdb")); err != nil {
 				t.Fatalf("run: %v", err)
@@ -78,7 +78,7 @@ func TestInitPassphraseNonInteractive(t *testing.T) {
 	}
 }
 
-// TestLUKSInitRequiresPassphraseFile pins that --yes without --passphrase-file
+// TestLUKSInitRequiresPassphraseFile pins that --yes without --password-file
 // is refused before any D-Bus connection is opened.
 func TestLUKSInitRequiresPassphraseFile(t *testing.T) {
 	tests := []struct {
@@ -86,9 +86,9 @@ func TestLUKSInitRequiresPassphraseFile(t *testing.T) {
 		args    []string
 		wantErr bool
 	}{
-		{"yes without passphrase-file", []string{"--yes"}, true},
-		{"yes with passphrase-file", []string{"--yes", "--passphrase-file", "pass.txt"}, false},
-		{"interactive without passphrase-file", nil, false},
+		{"yes without password-file", []string{"--yes"}, true},
+		{"yes with password-file", []string{"--yes", "--password-file", "pass.txt"}, false},
+		{"interactive without password-file", nil, false},
 		{"explicit yes=false", []string{"--yes=false"}, false},
 	}
 
@@ -97,7 +97,7 @@ func TestLUKSInitRequiresPassphraseFile(t *testing.T) {
 			init := newLUKSInitCmd()
 			init.Action = func(context.Context, *cli.Command) error { return nil }
 
-			root := &cli.Command{Name: "pki", Commands: []*cli.Command{init}}
+			root := testRoot(init)
 			args := append([]string{"pki", "init"}, tt.args...)
 			err := root.Run(context.Background(), append(args, "/dev/sdb"))
 
@@ -105,8 +105,8 @@ func TestLUKSInitRequiresPassphraseFile(t *testing.T) {
 				if err == nil {
 					t.Fatal("expected an error, got nil")
 				}
-				if !strings.Contains(err.Error(), "--passphrase-file") {
-					t.Errorf("error %q does not mention --passphrase-file", err)
+				if !strings.Contains(err.Error(), "--password-file") {
+					t.Errorf("error %q does not mention --password-file", err)
 				}
 				return
 			}

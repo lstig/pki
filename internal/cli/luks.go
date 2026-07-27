@@ -13,6 +13,7 @@ import (
 	"github.com/urfave/cli/v3"
 
 	"github.com/lstig/pki/internal/luks"
+	"github.com/lstig/pki/internal/password"
 	"github.com/lstig/pki/internal/workspace"
 )
 
@@ -59,20 +60,20 @@ func newLUKSListCmd() *cli.Command {
 
 func newLUKSInitCmd() *cli.Command {
 	var (
-		yesFlag            = &cli.BoolFlag{Name: "yes", Usage: "Automatically confirm erasing the device", HideDefault: true}
-		forceFlag          = &cli.BoolFlag{Name: "force", Usage: "Bypass the removable-USB safety check (DANGEROUS: can destroy the OS disk)", HideDefault: true}
-		labelFlag          = &cli.StringFlag{Name: "label", Aliases: []string{"l"}, Usage: "Filesystem label (determines the mountpoint)", Value: "pki"}
-		passphraseFileFlag = &cli.StringFlag{Name: "passphrase-file", Usage: "Write the volume passphrase to `PATH` (mode 0600); required with --yes"}
+		yesFlag          = &cli.BoolFlag{Name: "yes", Usage: "Automatically confirm erasing the device", HideDefault: true}
+		forceFlag        = &cli.BoolFlag{Name: "force", Usage: "Bypass the removable-USB safety check (DANGEROUS: can destroy the OS disk)", HideDefault: true}
+		labelFlag        = &cli.StringFlag{Name: "label", Aliases: []string{"l"}, Usage: "Filesystem label (determines the mountpoint)", Value: "pki"}
+		passwordFileFlag = &cli.StringFlag{Name: "password-file", Usage: "Write the volume password to `PATH` (mode 0600); required with --yes"}
 	)
 
 	return &cli.Command{
 		Name:      "init",
 		Usage:     "Format a device as a LUKS2-encrypted ext4 volume (DESTROYS all data)",
 		ArgsUsage: "DEVICE",
-		Flags:     []cli.Flag{yesFlag, forceFlag, labelFlag, passphraseFileFlag},
+		Flags:     []cli.Flag{yesFlag, forceFlag, labelFlag, passwordFileFlag},
 		Before: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
-			if cmd.Bool(yesFlag.Name) && cmd.String(passphraseFileFlag.Name) == "" {
-				return ctx, errors.New("--yes requires --passphrase-file: without it the generated passphrase would be unrecoverable")
+			if cmd.Bool(yesFlag.Name) && cmd.String(passwordFileFlag.Name) == "" {
+				return ctx, errors.New("--yes requires --password-file: without it the generated passphrase would be unrecoverable")
 			}
 			return ctx, nil
 		},
@@ -82,7 +83,7 @@ func newLUKSInitCmd() *cli.Command {
 				return err
 			}
 			yes := cmd.Bool(yesFlag.Name)
-			passphraseFile := cmd.String(passphraseFileFlag.Name)
+			passphraseFile := cmd.String(passwordFileFlag.Name)
 			if !yes {
 				if err := confirmErase(ctx, device); err != nil {
 					return err
@@ -180,7 +181,7 @@ func confirmErase(ctx context.Context, device string) error {
 // passphrase is the default; the form offers entering your own instead. With
 // yesSet the form is skipped and the generated passphrase is returned.
 func initPassphrase(ctx context.Context, device string, yesSet bool) (string, error) {
-	p := &passphrase{wordCount: 15, delim: " "}
+	p := &password.Passphrase{WordCount: 15, Delim: " "}
 	generated, err := p.Generate()
 	if err != nil {
 		return "", err

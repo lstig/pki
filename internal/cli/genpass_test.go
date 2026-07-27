@@ -1,111 +1,137 @@
 package cli
 
 import (
+	"context"
+	"io"
+	"os"
 	"strings"
 	"testing"
+
+	"github.com/urfave/cli/v3"
 )
 
-func TestWordlist(t *testing.T) {
-	words := wordlist()
-	if len(words) != 7776 {
-		t.Fatalf("wordlist size = %d, want 7776", len(words))
+// runGenpass runs `pki genpass` with args and returns what the command printed.
+// The action writes to os.Stdout directly, so the pipe swap is the only way to
+// observe which generator the flags were wired to.
+func runGenpass(t *testing.T, args ...string) (string, error) {
+	t.Helper()
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe: %v", err)
 	}
-	seen := make(map[string]bool, len(words))
-	for _, w := range words {
-		if w == "" {
-			t.Fatal("wordlist contains an empty entry")
-		}
-		if seen[w] {
-			t.Fatalf("wordlist contains duplicate %q", w)
-		}
-		seen[w] = true
+
+	orig := os.Stdout
+	os.Stdout = w
+	root := testRoot(newGenpassCmd())
+	runErr := root.Run(context.Background(), append([]string{"pki", "genpass"}, args...))
+	os.Stdout = orig
+
+	if err := w.Close(); err != nil {
+		t.Fatalf("close pipe: %v", err)
+	}
+	out, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatalf("read pipe: %v", err)
+	}
+	if err := r.Close(); err != nil {
+		t.Fatalf("close pipe: %v", err)
+	}
+
+	return strings.TrimSuffix(string(out), "\n"), runErr
+}
+
+// TestGenpassFlags pins that each flag reaches the generator it belongs to:
+// --mode picks the generator, and the size flags are wired to that generator's
+// destination fields.
+func TestGenpassFlags(t *testing.T) {
+	tests := []struct {
+		name      string
+		args      []string
+		wantDelim string
+		wantParts int
+		wantSize  int // characters per part, 0 to skip (word lengths vary)
+	}{
+		{"defaults", nil, " ", 12, 0},
+		{"word count", []string{"--word-count", "10"}, " ", 10, 0},
+		{"word count shorthand", []string{"-n", "10"}, " ", 10, 0},
+		{"explicit passphrase mode", []string{"--mode", "passphrase"}, " ", 12, 0},
+		{"base32 mode", []string{"--mode", "base32"}, "-", 6, 5},
+		{"base32 mode shorthand", []string{"-m", "base32"}, "-", 6, 5},
+		{"base32 size", []string{"-m", "base32", "--group-count", "4", "--group-size", "8"}, "-", 4, 8},
+		{"base32 size shorthand", []string{"-m", "base32", "-g", "4", "-s", "8"}, "-", 4, 8},
+		// The size flags belong to the other mode's generator and must not
+		// change the selected one.
+		{"word count ignored in base32 mode", []string{"-m", "base32", "-n", "3"}, "-", 6, 5},
+		{"group flags ignored in passphrase mode", []string{"-g", "1", "-s", "1"}, " ", 12, 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			out, err := runGenpass(t, tt.args...)
+			if err != nil {
+				t.Fatalf("run: %v", err)
+			}
+
+			parts := strings.Split(out, tt.wantDelim)
+			if len(parts) != tt.wantParts {
+				t.Fatalf("got %d parts %q, want %d", len(parts), parts, tt.wantParts)
+			}
+			for _, p := range parts {
+				if p == "" {
+					t.Fatalf("empty part in %q", out)
+				}
+				if tt.wantSize > 0 && len(p) != tt.wantSize {
+					t.Errorf("part %q has size %d, want %d", p, len(p), tt.wantSize)
+				}
+			}
+		})
 	}
 }
 
-func TestPassphraseGenerate(t *testing.T) {
-	words := wordlist()
-	valid := make(map[string]bool, len(words))
-	for _, w := range words {
-		valid[w] = true
+// TestGenpassInvalidFlags pins that bad values are refused rather than
+// producing a weak password.
+func TestGenpassInvalidFlags(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{"unknown mode", []string{"--mode", "rot13"}, "invalid mode: rot13"},
+		{"empty mode", []string{"--mode", ""}, "invalid mode"},
+		{"zero word count", []string{"--word-count", "0"}, "out of range"},
+		{"negative word count", []string{"--word-count", "-1"}, "out of range"},
+		{"word count above wordlist size", []string{"--word-count", "7777"}, "out of range"},
+		{"zero group count", []string{"-m", "base32", "--group-count", "0"}, "group count must be greater than zero"},
+		{"zero group size", []string{"-m", "base32", "--group-size", "0"}, "group size must be greater than zero"},
+		{"unknown flag", []string{"--rounds", "4"}, "flag provided but not defined"},
 	}
 
-	for _, count := range []int{1, 6, 10, 24} {
-		p := &passphrase{wordCount: count, delim: " "}
-		out, err := p.Generate()
-		if err != nil {
-			t.Fatalf("passphrase{wordCount: %d}.Generate() error = %v", count, err)
-		}
-		got := strings.Split(out, " ")
-		if len(got) != count {
-			t.Errorf("passphrase{wordCount: %d}.Generate() produced %d words, want %d", count, len(got), count)
-		}
-		for _, w := range got {
-			if !valid[w] {
-				t.Errorf("passphrase{wordCount: %d}.Generate() produced %q, not in wordlist", count, w)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			out, err := runGenpass(t, tt.args...)
+			if err == nil {
+				t.Fatalf("expected an error, got nil (printed %q)", out)
 			}
-		}
-	}
-
-	for _, count := range []int{0, -1, len(words) + 1} {
-		p := &passphrase{wordCount: count, delim: " "}
-		if _, err := p.Generate(); err == nil {
-			t.Errorf("passphrase{wordCount: %d}.Generate() error = nil, want out-of-range error", count)
-		}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("error = %q, want it to contain %q", err, tt.wantErr)
+			}
+			if out != "" {
+				t.Errorf("printed %q, want nothing", out)
+			}
+		})
 	}
 }
 
-// Draws enough words to make a stuck or constant index obvious; the wordlist
-// size is not a power of two, so the reduction has to be unbiased. wordCount is
-// capped at the wordlist size, so the draws are spread over several calls.
-func TestPassphraseGenerateDistribution(t *testing.T) {
-	n := len(wordlist())
-	seen := make(map[string]bool, n)
-	for range 3 {
-		p := &passphrase{wordCount: n, delim: " "}
-		out, err := p.Generate()
-		if err != nil {
-			t.Fatalf("Generate() error = %v", err)
-		}
-		for w := range strings.SplitSeq(out, " ") {
-			seen[w] = true
-		}
+// TestGenpassDefaultMode pins the default mode against the flag validator,
+// which runs on the default value too.
+func TestGenpassDefaultMode(t *testing.T) {
+	cmd := newGenpassCmd()
+	mode := cmd.Flags[0]
+	if got := mode.Names()[0]; got != "mode" {
+		t.Fatalf("first flag = %q, want mode", got)
 	}
-	// 3n draws over n words leave some buckets empty by chance (~1-e⁻³ expected
-	// coverage), so assert under that rather than demanding every word.
-	if want := n * 3 / 4; len(seen) < want {
-		t.Errorf("Generate() covered only %d distinct words, want at least %d", len(seen), want)
-	}
-}
-
-func TestBase32Generate(t *testing.T) {
-	for _, tc := range []struct{ groupCount, groupSize int }{
-		{1, 1}, {6, 5}, {4, 8}, {10, 3},
-	} {
-		b := &base32{groupCount: tc.groupCount, groupSize: tc.groupSize, delim: "-"}
-		out, err := b.Generate()
-		if err != nil {
-			t.Fatalf("base32{%d, %d}.Generate() error = %v", tc.groupCount, tc.groupSize, err)
-		}
-		groups := strings.Split(out, "-")
-		if len(groups) != tc.groupCount {
-			t.Errorf("base32{%d, %d}.Generate() produced %d groups, want %d", tc.groupCount, tc.groupSize, len(groups), tc.groupCount)
-		}
-		for _, g := range groups {
-			if len(g) != tc.groupSize {
-				t.Errorf("base32{%d, %d}.Generate() group %q has size %d, want %d", tc.groupCount, tc.groupSize, g, len(g), tc.groupSize)
-			}
-			if strings.ContainsFunc(g, func(r rune) bool { return !strings.ContainsRune(base32alphabet, r) }) {
-				t.Errorf("base32{%d, %d}.Generate() group %q has characters outside the alphabet", tc.groupCount, tc.groupSize, g)
-			}
-		}
-	}
-
-	for _, tc := range []struct{ groupCount, groupSize int }{
-		{0, 5}, {-1, 5}, {6, 0}, {6, -1},
-	} {
-		b := &base32{groupCount: tc.groupCount, groupSize: tc.groupSize, delim: "-"}
-		if _, err := b.Generate(); err == nil {
-			t.Errorf("base32{%d, %d}.Generate() error = nil, want error", tc.groupCount, tc.groupSize)
-		}
+	if got := mode.(*cli.StringFlag).Value; got != "passphrase" {
+		t.Errorf("default mode = %q, want passphrase", got)
 	}
 }
