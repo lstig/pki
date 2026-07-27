@@ -4,16 +4,11 @@ import (
 	"crypto/rand"
 	_ "embed"
 	"fmt"
+	"math"
 	"math/big"
-	"os"
 	"strings"
 	"sync"
 )
-
-// Passwords should provide at least 128 bits of randomness; go's rand.Text()
-// targets the same figure. The wordlist provides approx. log₂(7776) ≈ 12.925
-// bits per word.
-const minRecommendedWords = 10 // ⌈128 / 12.925⌉
 
 // The EFF "large" diceware list: 7776 words. Copyright Electronic
 // Frontier Foundation, licensed CC-BY-3.0. https://www.eff.org/dice
@@ -28,14 +23,18 @@ type Passphrase struct {
 	Delim     string
 }
 
+// Entropy returns the bits of randomness in a generated passphrase, rounded
+// down. Each word is drawn uniformly from the wordlist, contributing
+// log₂(7776) ≈ 12.925 bits.
+func (p *Passphrase) Entropy() int {
+	return int(float64(p.WordCount) * math.Log2(float64(len(wordlist()))))
+}
+
 // Generate returns a random selection of words joined by a delimiter.
 func (p *Passphrase) Generate() (string, error) {
 	words := wordlist()
-	switch {
-	case p.WordCount < 1 || p.WordCount > len(words):
+	if p.WordCount < 1 || p.WordCount > len(words) {
 		return "", fmt.Errorf("word count %d out of range: must be between 1 and %d", p.WordCount, len(words))
-	case p.WordCount < minRecommendedWords:
-		fmt.Fprintf(os.Stderr, "WARNING: passphrase is less than %d words, consider increasing the number of words\n", minRecommendedWords)
 	}
 	out := make([]string, p.WordCount)
 	for i := range out {

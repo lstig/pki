@@ -8,13 +8,14 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-// runGenpass runs `pki genpass` with args and returns the password it printed.
-func runGenpass(t *testing.T, args ...string) (string, error) {
+// runGenpass runs `pki genpass` with args and returns the password it printed
+// and anything it wrote to the error stream.
+func runGenpass(t *testing.T, args ...string) (pass, stderr string, err error) {
 	t.Helper()
 
-	root, out, _ := testRoot(newGenpassCmd())
-	err := root.Run(context.Background(), append([]string{"pki", "genpass"}, args...))
-	return strings.TrimSuffix(out.String(), "\n"), err
+	root, out, errOut := testRoot(newGenpassCmd())
+	err = root.Run(context.Background(), append([]string{"pki", "genpass"}, args...))
+	return strings.TrimSuffix(out.String(), "\n"), errOut.String(), err
 }
 
 // TestGenpassFlags pins that each flag reaches the generator it belongs to:
@@ -44,7 +45,7 @@ func TestGenpassFlags(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			out, err := runGenpass(t, tt.args...)
+			out, _, err := runGenpass(t, tt.args...)
 			if err != nil {
 				t.Fatalf("run: %v", err)
 			}
@@ -85,7 +86,7 @@ func TestGenpassInvalidFlags(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			out, err := runGenpass(t, tt.args...)
+			out, _, err := runGenpass(t, tt.args...)
 			if err == nil {
 				t.Fatalf("expected an error, got nil (printed %q)", out)
 			}
@@ -94,6 +95,50 @@ func TestGenpassInvalidFlags(t *testing.T) {
 			}
 			if out != "" {
 				t.Errorf("printed %q, want nothing", out)
+			}
+		})
+	}
+}
+
+// TestGenpassStrengthWarning pins that settings below the recommended entropy
+// still produce a password, and that the warning names the flags of the
+// selected mode. The warning must stay off stdout so `pki genpass > file`
+// captures only the password.
+func TestGenpassStrengthWarning(t *testing.T) {
+	tests := []struct {
+		name     string
+		args     []string
+		wantWarn string // empty means no warning at all
+	}{
+		{"default passphrase", nil, ""},
+		{"default base32", []string{"-m", "base32"}, ""},
+		{"passphrase at the boundary", []string{"-n", "10"}, ""},
+		{"short passphrase", []string{"-n", "9"}, "--word-count"},
+		{"base32 at the boundary", []string{"-m", "base32", "-g", "26", "-s", "1"}, ""},
+		{"short base32", []string{"-m", "base32", "-g", "4", "-s", "5"}, "--group-count or --group-size"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			out, stderr, err := runGenpass(t, tt.args...)
+			if err != nil {
+				t.Fatalf("run: %v", err)
+			}
+			if out == "" {
+				t.Error("no password printed")
+			}
+
+			if tt.wantWarn == "" {
+				if stderr != "" {
+					t.Errorf("warned %q, want no warning", stderr)
+				}
+				return
+			}
+			if !strings.Contains(stderr, "WARNING") || !strings.Contains(stderr, tt.wantWarn) {
+				t.Errorf("warning = %q, want it to mention %q", stderr, tt.wantWarn)
+			}
+			if strings.Contains(out, "WARNING") {
+				t.Errorf("warning leaked into stdout: %q", out)
 			}
 		})
 	}

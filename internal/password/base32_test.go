@@ -37,3 +37,20 @@ func TestBase32Generate(t *testing.T) {
 		}
 	}
 }
+
+func TestBase32Entropy(t *testing.T) {
+	// Each character of the 32-character alphabet carries exactly 5 bits.
+	for _, tc := range []struct {
+		groupCount, groupSize, want int
+	}{
+		{6, 5, 150}, // the genpass default
+		{4, 8, 160},
+		{26, 1, 130},
+		{1, 1, 5},
+	} {
+		b := &Base32{GroupCount: tc.groupCount, GroupSize: tc.groupSize, Delim: "-"}
+		if got := b.Entropy(); got != tc.want {
+			t.Errorf("Base32{%d, %d}.Entropy() = %d, want %d", tc.groupCount, tc.groupSize, got, tc.want)
+		}
+	}
+}

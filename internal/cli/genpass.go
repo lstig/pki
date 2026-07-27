@@ -13,17 +13,27 @@ import (
 	"github.com/lstig/pki/internal/password"
 )
 
+// minRecommendedBits is the randomness a generated password should provide;
+// go's rand.Text() targets the same figure. The password package measures what
+// a mode produces, this decides what is good enough.
+const minRecommendedBits = 128
+
 type generator interface {
 	Generate() (string, error)
+	Entropy() int
 }
 
 func newGenpassCmd() *cli.Command {
 	var (
 		base32     = &password.Base32{Delim: "-"}
 		passphrase = &password.Passphrase{Delim: " "}
-		modes      = map[string]generator{
-			"base32":     base32,
-			"passphrase": passphrase,
+		modes      = map[string]struct {
+			generator
+			// hint defines the flags can be tweaked to increase the passwords entropy
+			hint string
+		}{
+			"base32":     {base32, "--group-count or --group-size"},
+			"passphrase": {passphrase, "--word-count"},
 		}
 
 		mode = &cli.StringFlag{
@@ -82,9 +92,14 @@ $ pki genpass --mode base32 --group-count 4 --group-size 8
 2BS6OHKJ-4AS5CCHZ-7BWA5MBP-XSGKRGNP
 		`,
 		Action: func(_ context.Context, c *cli.Command) error {
-			pass, err := modes[c.String(mode.Name)].Generate()
+			m := modes[c.String(mode.Name)]
+			pass, err := m.Generate()
 			if err != nil {
 				return err
+			}
+			if bits := m.Entropy(); bits < minRecommendedBits {
+				fmt.Fprintf(c.Root().ErrWriter, "WARNING: %d bits of randomness, less than the recommended %d, consider increasing %s\n",
+					bits, minRecommendedBits, m.hint)
 			}
 			fmt.Fprintln(c.Root().Writer, pass)
 			return nil

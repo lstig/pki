@@ -76,3 +76,19 @@ func TestPassphraseGenerateDistribution(t *testing.T) {
 		t.Errorf("Generate() covered only %d distinct words, want at least %d", len(seen), want)
 	}
 }
+
+func TestPassphraseEntropy(t *testing.T) {
+	// log₂(7776) ≈ 12.925 bits per word, rounded down.
+	for _, tc := range []struct{ wordCount, want int }{
+		{12, 155}, // the genpass default
+		{15, 193}, // the luks init passphrase
+		{10, 129},
+		{9, 116},
+		{1, 12},
+	} {
+		p := &Passphrase{WordCount: tc.wordCount, Delim: " "}
+		if got := p.Entropy(); got != tc.want {
+			t.Errorf("Passphrase{WordCount: %d}.Entropy() = %d, want %d", tc.wordCount, got, tc.want)
+		}
+	}
+}
